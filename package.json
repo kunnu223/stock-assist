@@ -1,0 +1,29 @@
+{
+  "name": "stock-assist",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Trading Assistant - Dual Strategy System for 70%+ Win Rate",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev -w @stock-assist/api",
+    "dev:web": "npm run dev -w @stock-assist/web",
+    "build": "npm run build -w @stock-assist/shared && npm run build -w @stock-assist/api && npm run build -w @stock-assist/web",
+    "build:api": "npm run build -w @stock-assist/api",
+    "build:web": "npm run build -w @stock-assist/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "clean": "rimraf node_modules apps/*/node_modules packages/*/node_modules"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
