@@ -12,6 +12,7 @@ import { tradeRouter } from './routes/trade';
 import { watchlistRouter } from './routes/watchlist';
 import { analyticsRouter } from './routes/analytics';
 import { backtestRouter } from './routes/backtest';
+import stocksRouter from './routes/stocks';
 
 // Load environment variables
 dotenv.config();
@@ -45,6 +46,7 @@ app.use('/api/trade', tradeRouter);
 app.use('/api/watchlist', watchlistRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/backtest', backtestRouter);
+app.use('/api/stocks', stocksRouter);
 
 /**
  * Start Server
