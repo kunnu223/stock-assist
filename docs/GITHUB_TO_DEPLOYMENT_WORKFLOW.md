@@ -27,7 +27,7 @@ git commit -m "feat: initial project structure"
 2. **Link and Push**:
 ```bash
 # Add the remote (Replace YOUR_USERNAME)
-git remote add origin https://github.com/YOUR_USERNAME/Stock-Assist.git
+git remote add origin https://github.com/kunnu223/stock-assist.git
 
 # Set the main branch
 git branch -M main
