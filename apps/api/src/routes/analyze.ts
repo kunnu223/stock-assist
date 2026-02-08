@@ -22,6 +22,7 @@ import { performComprehensiveTechnicalAnalysis, getTechnicalSummary, calculateCo
 import { buildEnhancedPrompt } from '../services/ai/enhancedPrompt';
 import { analyzeWithGroq } from '../services/ai/groq';
 import { compareSector } from '../services/data';
+import { formatAmount, formatPercent, safeNumber } from '../utils/formatting';
 import type { StockData } from '@stock-assist/shared';
 import type { ConfidenceResult } from '../services/analysis/confidenceScoring';
 import type { FundamentalData } from '../services/data/fundamentals';
@@ -270,15 +271,15 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             confirmation: 'Close above with volume',
             tradePlan: {
                 action: 'BUY',
-                entry: [stock.quote.price, sr.resistance],
-                stopLoss: sr.support,
-                stopLossPercent: parseFloat(((stock.quote.price - sr.support) / stock.quote.price * 100).toFixed(1)),
+                entry: [formatAmount(stock.quote.price), formatAmount(sr.resistance)],
+                stopLoss: formatAmount(sr.support),
+                stopLossPercent: formatPercent((stock.quote.price - sr.support) / stock.quote.price * 100),
                 targets: [
-                    { price: sr.resistance, probability: 70 },
-                    { price: sr.resistance * 1.05, probability: 50 }
+                    { price: formatAmount(sr.resistance), probability: 70 },
+                    { price: formatAmount(sr.resistance * 1.05), probability: 50 }
                 ],
-                riskReward: 1.5,
-                potentialProfit: [500, 1500]
+                riskReward: formatAmount(1.5),
+                potentialProfit: [formatAmount(500), formatAmount(1500)]
             },
             factors: ['Technical setup', 'Volume confirmation'],
             timeHorizon: '3-7 days'
@@ -291,15 +292,15 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             confirmation: 'Close below with volume',
             tradePlan: {
                 action: 'AVOID',
-                entry: [sr.support * 0.98, sr.support],
-                stopLoss: sr.resistance,
-                stopLossPercent: parseFloat(((sr.resistance - stock.quote.price) / stock.quote.price * 100).toFixed(1)),
+                entry: [formatAmount(sr.support * 0.98), formatAmount(sr.support)],
+                stopLoss: formatAmount(sr.resistance),
+                stopLossPercent: formatPercent((sr.resistance - stock.quote.price) / stock.quote.price * 100),
                 targets: [
-                    { price: sr.support, probability: 60 },
-                    { price: sr.support * 0.95, probability: 40 }
+                    { price: formatAmount(sr.support), probability: 60 },
+                    { price: formatAmount(sr.support * 0.95), probability: 40 }
                 ],
-                riskReward: 1.2,
-                potentialProfit: [200, 800]
+                riskReward: formatAmount(1.2),
+                potentialProfit: [formatAmount(200), formatAmount(800)]
             },
             factors: ['Downside risk', 'Support breakdown'],
             timeHorizon: '1-5 days'
@@ -311,7 +312,7 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             processingTime: `${((Date.now() - start) / 1000).toFixed(1)}s`,
             analysis: {
                 stock: stock.symbol,
-                currentPrice: stock.quote.price,
+                currentPrice: formatAmount(stock.quote.price),
                 recommendation: aiAnalysis.recommendation || confidenceResult.recommendation,
                 confidenceScore: aiAnalysis.confidenceScore || adjustedConfidence, // Use adjusted confidence
                 timeframe: aiAnalysis.timeframe || 'swing',
@@ -371,7 +372,7 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                     alignment: technicalAnalysis.multiTimeframe.alignment
                 },
                 indicators: {
-                    RSI: technicalAnalysis.indicators.daily.rsi.value,
+                    RSI: formatAmount(technicalAnalysis.indicators.daily.rsi.value),
                     RSIInterpretation: technicalAnalysis.indicators.daily.rsi.interpretation,
                     MACD: technicalAnalysis.indicators.daily.macd.trend,
                     volumeTrend: technicalAnalysis.indicators.daily.volume.trend,
@@ -386,14 +387,21 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                 fundamentals: {
                     valuation: fundamentals.valuation,
                     growth: fundamentals.growth,
-                    peRatio: fundamentals.metrics.peRatio
+                    peRatio: formatAmount(fundamentals.metrics.peRatio)
                 },
                 candlestickPatterns: technicalAnalysis.candlestickPatterns,
-                priceTargets: aiAnalysis.priceTargets || {
-                    entry: stock.quote.price,
-                    target1: sr.resistance,
-                    target2: sr.resistance * 1.05,
-                    stopLoss: sr.support,
+                priceTargets: aiAnalysis.priceTargets ? {
+                    ...aiAnalysis.priceTargets,
+                    entry: formatAmount(aiAnalysis.priceTargets.entry),
+                    target1: formatAmount(aiAnalysis.priceTargets.target1),
+                    target2: formatAmount(aiAnalysis.priceTargets.target2),
+                    stopLoss: formatAmount(aiAnalysis.priceTargets.stopLoss),
+                    riskReward: formatAmount(aiAnalysis.priceTargets.riskReward)
+                } : {
+                    entry: formatAmount(stock.quote.price),
+                    target1: formatAmount(sr.resistance),
+                    target2: formatAmount(sr.resistance * 1.05),
+                    stopLoss: formatAmount(sr.support),
                     riskReward: 1.5
                 },
                 risks: aiAnalysis.risks || ['Market volatility', 'Sector rotation', 'Global economic factors'],
