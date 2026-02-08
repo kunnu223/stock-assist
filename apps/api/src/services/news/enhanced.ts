@@ -20,6 +20,9 @@ export interface EnhancedNewsItem {
 
 export interface EnhancedNewsAnalysis {
     items: EnhancedNewsItem[];
+    breakingNews: EnhancedNewsItem[]; // < 2 hours
+    recentNews: EnhancedNewsItem[];   // < 24 hours
+    breakingImpact: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
     sentiment: 'positive' | 'negative' | 'neutral';
     sentimentScore: number;
     impactLevel: 'high' | 'medium' | 'low';
@@ -111,6 +114,38 @@ const getImpactLevel = (text: string): 'high' | 'medium' | 'low' => {
 };
 
 /**
+ * Filter news by age (in hours)
+ */
+const filterNewsByAge = (items: EnhancedNewsItem[], maxAgeHours: number): EnhancedNewsItem[] => {
+    const now = Date.now();
+    const maxAge = maxAgeHours * 60 * 60 * 1000;
+
+    return items.filter(item => {
+        const pubDate = new Date(item.pubDate).getTime();
+        const age = now - pubDate;
+        return age <= maxAge;
+    });
+};
+
+/**
+ * Determine breaking news impact
+ */
+const getBreakingImpact = (breakingNews: EnhancedNewsItem[]): 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' => {
+    if (breakingNews.length === 0) return 'NONE';
+
+    const hasHighImpact = breakingNews.some(item =>
+        item.impactKeywords.some(k => IMPACT_KEYWORDS.high.includes(k))
+    );
+
+    const hasNegative = breakingNews.some(item => item.sentiment === 'negative');
+    const hasPositive = breakingNews.some(item => item.sentiment === 'positive');
+
+    if (hasHighImpact) return 'HIGH';
+    if (hasNegative || hasPositive) return 'MEDIUM';
+    return 'LOW';
+};
+
+/**
  * Fetch enhanced news for a stock
  */
 export const fetchEnhancedNews = async (symbol: string): Promise<EnhancedNewsAnalysis> => {
@@ -164,6 +199,11 @@ export const fetchEnhancedNews = async (symbol: string): Promise<EnhancedNewsAna
             ? items.reduce((sum, i) => sum + i.sentimentScore, 0) / items.length
             : 50;
 
+        // Filter breaking and recent news
+        const breakingNews = filterNewsByAge(items, 2);  // < 2 hours
+        const recentNews = filterNewsByAge(items, 24);   // < 24 hours
+        const breakingImpact = getBreakingImpact(breakingNews);
+
         // Determine overall impact
         const allImpactKeywords = items.flatMap((i) => i.impactKeywords);
         const hasHighImpact = IMPACT_KEYWORDS.high.some((k) => allImpactKeywords.includes(k));
@@ -172,6 +212,9 @@ export const fetchEnhancedNews = async (symbol: string): Promise<EnhancedNewsAna
 
         const result: EnhancedNewsAnalysis = {
             items,
+            breakingNews,
+            recentNews,
+            breakingImpact,
             sentiment: avgScore > 60 ? 'positive' : avgScore < 40 ? 'negative' : 'neutral',
             sentimentScore: Math.round(avgScore),
             impactLevel,
@@ -193,6 +236,9 @@ export const fetchEnhancedNews = async (symbol: string): Promise<EnhancedNewsAna
 /** Default news when fetch fails */
 const getDefaultNews = (): EnhancedNewsAnalysis => ({
     items: [],
+    breakingNews: [],
+    recentNews: [],
+    breakingImpact: 'NONE',
     sentiment: 'neutral',
     sentimentScore: 50,
     impactLevel: 'low',

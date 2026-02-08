@@ -18,9 +18,10 @@ import { checkTimeframeAlignment, getAlignmentSummary } from '../utils/timeframe
 // Enhanced analysis imports
 import { fetchEnhancedNews } from '../services/news/enhanced';
 import { fetchFundamentals } from '../services/data/fundamentals';
-import { performComprehensiveTechnicalAnalysis, getTechnicalSummary, calculateConfidence } from '../services/analysis';
+import { performComprehensiveTechnicalAnalysis, getTechnicalSummary, calculateConfidence, calculatePatternConfluence, detectFundamentalTechnicalConflict } from '../services/analysis';
 import { buildEnhancedPrompt } from '../services/ai/enhancedPrompt';
 import { analyzeWithGroq } from '../services/ai/groq';
+import { compareSector } from '../services/data';
 import type { StockData } from '@stock-assist/shared';
 import type { ConfidenceResult } from '../services/analysis/confidenceScoring';
 import type { FundamentalData } from '../services/data/fundamentals';
@@ -148,6 +149,48 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
 
         console.log(`[Analyze] Confidence: ${confidenceResult.score}/100 → ${confidenceResult.recommendation}`);
 
+        // NEW: Step 3.5: Calculate pattern confluence across timeframes
+        const patternConfluence = calculatePatternConfluence({
+            '1D': technicalAnalysis.patterns.daily,
+            '1W': technicalAnalysis.patterns.weekly || technicalAnalysis.patterns.daily, // Fallback
+            '1M': technicalAnalysis.patterns.monthly || technicalAnalysis.patterns.daily // Fallback
+        });
+        console.log(`[Analyze] Pattern Confluence: ${patternConfluence.agreement} (${patternConfluence.score}%) - Modifier: ${patternConfluence.confidenceModifier}%`);
+
+        // NEW: Step 3.6: Detect fundamental-technical conflicts
+        const ftConflict = detectFundamentalTechnicalConflict(
+            {
+                bias: confidenceResult.recommendation === 'BUY' ? 'BULLISH' : confidenceResult.recommendation === 'SELL' ? 'BEARISH' : 'NEUTRAL',
+                confidenceScore: confidenceResult.score
+            },
+            fundamentals
+        );
+        console.log(`[Analyze] Fundamental-Technical: ${ftConflict.hasConflict ? '⚠️ CONFLICT' : '✅ Aligned'} - Modifier: ${ftConflict.confidenceAdjustment}%`);
+
+        // NEW: Step 3.7: Sector comparison
+        const sectorComparison = await compareSector(stock.symbol, stock.quote.changePercent);
+        console.log(`[Analyze] Sector Comparison: ${sectorComparison.verdict} - Modifier: ${sectorComparison.confidenceModifier}%`);
+
+        // NEW: Calculate adjusted confidence score
+        const baseConfidence = confidenceResult.score;
+        const adjustedConfidence = Math.max(0, Math.min(100,
+            baseConfidence +
+            patternConfluence.confidenceModifier +
+            ftConflict.confidenceAdjustment +
+            sectorComparison.confidenceModifier
+        ));
+        console.log(`[Analyze] Final Confidence: ${baseConfidence}% → ${adjustedConfidence}% (adjusted)`);
+
+        // NEW: Breaking news override
+        let breakingNewsOverride = false;
+        if (enhancedNews.breakingImpact === 'HIGH' && enhancedNews.breakingNews.length > 0) {
+            const negativeBreaking = enhancedNews.breakingNews.some(n => n.sentiment === 'negative');
+            if (negativeBreaking) {
+                breakingNewsOverride = true;
+                console.log(`[Analyze] ⚠️ Breaking negative news detected - capping bullish probability`);
+            }
+        }
+
         // Step 4: Generate technical summary for AI
         const technicalSummary = getTechnicalSummary(technicalAnalysis);
 
@@ -225,8 +268,40 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                 stock: stock.symbol,
                 currentPrice: stock.quote.price,
                 recommendation: aiAnalysis.recommendation || confidenceResult.recommendation,
-                confidenceScore: aiAnalysis.confidenceScore || confidenceResult.score,
+                confidenceScore: aiAnalysis.confidenceScore || adjustedConfidence, // Use adjusted confidence
                 timeframe: aiAnalysis.timeframe || 'swing',
+
+                // NEW: Accuracy metrics
+                accuracyMetrics: {
+                    baseConfidence: confidenceResult.score,
+                    adjustedConfidence,
+                    modifiers: {
+                        patternConfluence: patternConfluence.confidenceModifier,
+                        fundamentalTechnical: ftConflict.confidenceAdjustment,
+                        sectorComparison: sectorComparison.confidenceModifier
+                    },
+                    patternConfluence: {
+                        score: patternConfluence.score,
+                        agreement: patternConfluence.agreement,
+                        conflicts: patternConfluence.conflicts
+                    },
+                    sectorComparison: {
+                        verdict: sectorComparison.verdict,
+                        outperformance: sectorComparison.outperformance,
+                        recommendation: sectorComparison.recommendation
+                    },
+                    fundamentalTechnical: {
+                        hasConflict: ftConflict.hasConflict,
+                        conflictType: ftConflict.conflictType,
+                        recommendation: ftConflict.recommendation
+                    },
+                    breakingNews: {
+                        count: enhancedNews.breakingNews.length,
+                        impact: enhancedNews.breakingImpact,
+                        override: breakingNewsOverride
+                    }
+                },
+
                 technicalPatterns: {
                     '1D': technicalAnalysis.multiTimeframe.timeframes['1D'].patterns,
                     '1W': technicalAnalysis.multiTimeframe.timeframes['1W'].patterns,
