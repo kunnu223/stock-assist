@@ -204,7 +204,12 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             technicalSummary,
             confidenceResult,
             weeklyIndicators: technicalAnalysis.indicators.weekly || undefined,
-            monthlyIndicators: technicalAnalysis.indicators.monthly || undefined
+            monthlyIndicators: technicalAnalysis.indicators.monthly || undefined,
+            weeklyPatterns: technicalAnalysis.patterns.weekly || undefined,
+            monthlyPatterns: technicalAnalysis.patterns.monthly || undefined,
+            patternConfluence,
+            ftConflict,
+            sectorComparison
         });
 
         // Use enhanced AI analysis
