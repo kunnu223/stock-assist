@@ -130,19 +130,49 @@ const filterNewsByAge = (items: EnhancedNewsItem[], maxAgeHours: number): Enhanc
 /**
  * Determine breaking news impact
  */
-const getBreakingImpact = (breakingNews: EnhancedNewsItem[]): 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' => {
-    if (breakingNews.length === 0) return 'NONE';
+/**
+ * Analyze breaking news impact based on count and sentiment
+ */
+const analyzeBreakingNews = (news: EnhancedNewsItem[]): {
+    count: number;
+    impact: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
+    override: boolean;
+    items: EnhancedNewsItem[];
+} => {
+    const now = Date.now();
+    const twoHoursAgo = now - 2 * 60 * 60 * 1000;
 
-    const hasHighImpact = breakingNews.some(item =>
-        item.impactKeywords.some(k => IMPACT_KEYWORDS.high.includes(k))
-    );
+    const breakingNews = news.filter(item => {
+        const newsDate = new Date(item.pubDate).getTime();
+        return newsDate > twoHoursAgo;
+    });
 
-    const hasNegative = breakingNews.some(item => item.sentiment === 'negative');
-    const hasPositive = breakingNews.some(item => item.sentiment === 'positive');
+    if (breakingNews.length === 0) {
+        return { count: 0, impact: 'NONE', override: false, items: [] };
+    }
 
-    if (hasHighImpact) return 'HIGH';
-    if (hasNegative || hasPositive) return 'MEDIUM';
-    return 'LOW';
+    // Analyze sentiment
+    const negativeCount = breakingNews.filter(n => n.sentiment === 'negative').length;
+    const positiveCount = breakingNews.filter(n => n.sentiment === 'positive').length;
+
+    let impact: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
+    if (breakingNews.length >= 3) impact = 'HIGH';
+    else if (breakingNews.length >= 2) impact = 'MEDIUM';
+
+    // Override if negative sentiment dominates and impact is significant
+    const override = negativeCount > positiveCount && impact !== 'LOW';
+
+    console.log(`[enhanced.ts:135] Breaking News Analysis: ${breakingNews.length} items. Impact: ${impact}. Sentiment: ${negativeCount > positiveCount ? 'NEGATIVE' : 'POSITIVE'}`);
+    if (override) {
+        console.log(`[enhanced.ts:137] ⚠️ Breaking negative news override active!`);
+    }
+
+    return {
+        count: breakingNews.length,
+        impact,
+        override,
+        items: breakingNews
+    };
 };
 
 /**
@@ -200,9 +230,10 @@ export const fetchEnhancedNews = async (symbol: string): Promise<EnhancedNewsAna
             : 50;
 
         // Filter breaking and recent news
-        const breakingNews = filterNewsByAge(items, 2);  // < 2 hours
+        const breakingAnalysis = analyzeBreakingNews(items);
+        const breakingNews = breakingAnalysis.items;
         const recentNews = filterNewsByAge(items, 24);   // < 24 hours
-        const breakingImpact = getBreakingImpact(breakingNews);
+        const breakingImpact = breakingAnalysis.impact;
 
         // Determine overall impact
         const allImpactKeywords = items.flatMap((i) => i.impactKeywords);
@@ -224,7 +255,7 @@ export const fetchEnhancedNews = async (symbol: string): Promise<EnhancedNewsAna
 
         // Update cache
         cache.set(cacheKey, { data: result, timestamp: Date.now() });
-        console.log(`[EnhancedNews] Fetched ${items.length} news for ${symbol}, sentiment: ${result.sentiment} (${avgScore})`);
+        console.log(`[enhanced.ts:227] Fetched ${items.length} news items. Sentiment: ${result.sentiment} (${result.sentimentScore}). Breaking: ${breakingNews.length}`);
 
         return result;
     } catch (error) {

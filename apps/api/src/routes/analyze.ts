@@ -119,25 +119,43 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
     console.log(`[Analyze] 🚀 Enhanced analysis for: ${symbol}`);
 
     try {
-        // Step 1: Fetch all data in parallel for speed
-        const [stock, enhancedNews, fundamentals] = await Promise.all([
-            getStockData(symbol),
-            fetchEnhancedNews(symbol),
-            fetchFundamentals(symbol)
+        // Step 1:        // Step 2: Parallel fetch of data
+        console.log(`[analyze.ts:137] 🚀 Starting parallel data fetch for ${symbol}...`);
+        const [stock, technicalAnalysis, enhancedNews, fundamentals] = await Promise.all([
+            // 1. Basic stock data (Quote + History + Multi-timeframe)
+            getStockData(symbol).then(data => {
+                console.log(`[analyze.ts:140] ✅ Stock data fetched for ${symbol}`);
+                return data;
+            }),
+
+            // 2. Comprehensive Technical Analysis
+            getStockData(symbol).then(data => {
+                const res = performComprehensiveTechnicalAnalysis({
+                    daily: data.history,
+                    weekly: data.timeframes?.weekly || [],
+                    monthly: data.timeframes?.monthly || []
+                });
+                console.log(`[analyze.ts:145] ✅ Technical analysis complete (Indicators: ${res.indicators.daily ? 'YES' : 'NO'}, Patterns: ${res.patterns.daily ? 'YES' : 'NO'})`);
+                return res;
+            }),
+
+            // 3. Enhanced News Analysis
+            fetchEnhancedNews(symbol).then(res => {
+                console.log(`[analyze.ts:150] ✅ News analysis complete (${res.latestHeadlines.length} items, Impact: ${res.impactLevel})`);
+                return res;
+            }),
+
+            // 4. Fundamental Analysis
+            fetchFundamentals(symbol).then(res => {
+                console.log(`[analyze.ts:155] ✅ Fundamentals fetched (Valuation: ${res.valuation}, Growth: ${res.growth})`);
+                return res;
+            })
         ]);
 
         console.log(`[Analyze] Data fetched in ${((Date.now() - start) / 1000).toFixed(1)}s`);
-
-        // Step 2: Perform comprehensive technical analysis
-        const technicalAnalysis = performComprehensiveTechnicalAnalysis({
-            daily: stock.history,
-            weekly: stock.timeframes?.weekly || [],
-            monthly: stock.timeframes?.monthly || []
-        });
-
         console.log(`[Analyze] Technical analysis: alignment=${technicalAnalysis.multiTimeframe.alignment}`);
 
-        // Step 3: Calculate confidence score
+        // Step 3: Calculate base confidence score
         const confidenceResult = calculateConfidence({
             patterns: technicalAnalysis.patterns.daily,
             news: enhancedNews,
@@ -146,18 +164,19 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             weeklyIndicators: technicalAnalysis.indicators.weekly || undefined,
             monthlyIndicators: technicalAnalysis.indicators.monthly || undefined
         });
-
-        console.log(`[Analyze] Confidence: ${confidenceResult.score}/100 → ${confidenceResult.recommendation}`);
+        console.log(`[analyze.ts:167] 📊 Base Confidence Calculated: ${confidenceResult.score}/100 → ${confidenceResult.recommendation}`);
 
         // NEW: Step 3.5: Calculate pattern confluence across timeframes
+        console.log(`[analyze.ts:170] 🔄 Calculating pattern confluence...`);
         const patternConfluence = calculatePatternConfluence({
             '1D': technicalAnalysis.patterns.daily,
             '1W': technicalAnalysis.patterns.weekly || technicalAnalysis.patterns.daily, // Fallback
             '1M': technicalAnalysis.patterns.monthly || technicalAnalysis.patterns.daily // Fallback
         });
-        console.log(`[Analyze] Pattern Confluence: ${patternConfluence.agreement} (${patternConfluence.score}%) - Modifier: ${patternConfluence.confidenceModifier}%`);
+        console.log(`[analyze.ts:176] 🧩 Confluence Score: ${patternConfluence.score}/100, Agreement: ${patternConfluence.agreement}, Modifier: ${patternConfluence.confidenceModifier}%`);
 
         // NEW: Step 3.6: Detect fundamental-technical conflicts
+        console.log(`[analyze.ts:179] 🔍 Checking fundamental-technical conflicts...`);
         const ftConflict = detectFundamentalTechnicalConflict(
             {
                 bias: confidenceResult.recommendation === 'BUY' ? 'BULLISH' : confidenceResult.recommendation === 'SELL' ? 'BEARISH' : 'NEUTRAL',
@@ -165,11 +184,12 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             },
             fundamentals
         );
-        console.log(`[Analyze] Fundamental-Technical: ${ftConflict.hasConflict ? '⚠️ CONFLICT' : '✅ Aligned'} - Modifier: ${ftConflict.confidenceAdjustment}%`);
+        console.log(`[analyze.ts:187] 💰 Fundamental Conflict: ${ftConflict.hasConflict ? 'YES' : 'NO'} (${ftConflict.conflictType}), Modifier: ${ftConflict.confidenceAdjustment}%`);
 
         // NEW: Step 3.7: Sector comparison
+        console.log(`[analyze.ts:190] 🏢 Comparing with sector...`);
         const sectorComparison = await compareSector(stock.symbol, stock.quote.changePercent);
-        console.log(`[Analyze] Sector Comparison: ${sectorComparison.verdict} - Modifier: ${sectorComparison.confidenceModifier}%`);
+        console.log(`[analyze.ts:192] 📉 Sector Verdict: ${sectorComparison.verdict}, Outperformance: ${sectorComparison.outperformance}%, Modifier: ${sectorComparison.confidenceModifier}%`);
 
         // NEW: Calculate adjusted confidence score
         const baseConfidence = confidenceResult.score;
@@ -179,7 +199,7 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             ftConflict.confidenceAdjustment +
             sectorComparison.confidenceModifier
         ));
-        console.log(`[Analyze] Final Confidence: ${baseConfidence}% → ${adjustedConfidence}% (adjusted)`);
+        console.log(`[analyze.ts:202] 🎯 Final Confidence: ${baseConfidence}% → ${adjustedConfidence}% (Adjusted)`);
 
         // NEW: Breaking news override
         let breakingNewsOverride = false;
@@ -187,7 +207,7 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             const negativeBreaking = enhancedNews.breakingNews.some(n => n.sentiment === 'negative');
             if (negativeBreaking) {
                 breakingNewsOverride = true;
-                console.log(`[Analyze] ⚠️ Breaking negative news detected - capping bullish probability`);
+                console.log(`[analyze.ts:210] ⚠️ Breaking negative news detected - capping bullish probability`);
             }
         }
 
@@ -209,16 +229,36 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             monthlyPatterns: technicalAnalysis.patterns.monthly || undefined,
             patternConfluence,
             ftConflict,
-            sectorComparison
+            sectorComparison,
+            multiTimeframe: technicalAnalysis.multiTimeframe
         });
 
         // Use enhanced AI analysis
         let aiAnalysis = await analyzeWithEnhancedPrompt(enhancedPrompt, stock.symbol);
 
-        // Fallback if AI fails
+        // Fallback if AI fails or returns invalid recommendation
         if (!aiAnalysis) {
             console.warn(`[Analyze] AI analysis failed, using system confidence`);
             aiAnalysis = generateFallbackAnalysis(stock, confidenceResult, technicalAnalysis, fundamentals);
+        } else {
+            // Validate recommendation format (Fix for "Objects are not valid as a React child")
+            if (typeof aiAnalysis.recommendation === 'object') {
+                console.warn(`[Analyze] ⚠️ AI returned object for recommendation:`, aiAnalysis.recommendation);
+                // Extract trade/action from object
+                const recObj = aiAnalysis.recommendation as any;
+                aiAnalysis.recommendation = recObj.trade || recObj.action || recObj.signal || confidenceResult.recommendation;
+            }
+            if (typeof aiAnalysis.confidenceScore === 'object') {
+                const confObj = aiAnalysis.confidenceScore as any;
+                aiAnalysis.confidenceScore = confObj.score || confObj.confidence || adjustedConfidence;
+            }
+            if (typeof aiAnalysis.bias === 'object') {
+                const biasObj = aiAnalysis.bias as any;
+                aiAnalysis.bias = biasObj.bias || biasObj.trend || (confidenceResult.recommendation === 'BUY' ? 'BULLISH' : 'BEARISH');
+            }
+            if (typeof aiAnalysis.timeframe === 'object') {
+                aiAnalysis.timeframe = 'swing'; // Default if complex object
+            }
         }
 
         // Default bullish/bearish scenarios
@@ -276,6 +316,23 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                 confidenceScore: aiAnalysis.confidenceScore || adjustedConfidence, // Use adjusted confidence
                 timeframe: aiAnalysis.timeframe || 'swing',
 
+                // NEW: Highlights and Badges (User Request)
+                highlights: {
+                    badge: patternConfluence.score > 80 ? '🎯 MULTI-TIMEFRAME CONFLUENCE' : undefined,
+                    primaryFactor: patternConfluence.score > 75
+                        ? `Multi-timeframe pattern agreement (${patternConfluence.bullishTimeframes.join(' + ')})`
+                        : sectorComparison.verdict === 'STRONG_OUTPERFORMER'
+                            ? 'Sector Outperformance'
+                            : fundamentals.valuation !== 'overvalued' && confidenceResult.score > 70
+                                ? 'Undervalued with technical strength'
+                                : 'Technical alignment',
+                    supportingFactors: [
+                        fundamentals.valuation !== 'overvalued' ? `Valuation: ${fundamentals.valuation} (PE ${fundamentals.metrics.peRatio})` : null,
+                        enhancedNews.sentiment === 'positive' ? 'Positive News Sentiment' : null,
+                        (sectorComparison.outperformance !== null && sectorComparison.outperformance > 0) ? `Sector Outperformance (+${sectorComparison.outperformance.toFixed(1)}%)` : null
+                    ].filter(Boolean)
+                },
+
                 // NEW: Accuracy metrics
                 accuracyMetrics: {
                     baseConfidence: confidenceResult.score,
@@ -308,9 +365,9 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                 },
 
                 technicalPatterns: {
-                    '1D': technicalAnalysis.multiTimeframe.timeframes['1D'].patterns,
-                    '1W': technicalAnalysis.multiTimeframe.timeframes['1W'].patterns,
-                    '1M': technicalAnalysis.multiTimeframe.timeframes['1M'].patterns,
+                    '1D': formatPatternsWithStars(technicalAnalysis.multiTimeframe.timeframes['1D']),
+                    '1W': formatPatternsWithStars(technicalAnalysis.multiTimeframe.timeframes['1W']),
+                    '1M': formatPatternsWithStars(technicalAnalysis.multiTimeframe.timeframes['1M']),
                     alignment: technicalAnalysis.multiTimeframe.alignment
                 },
                 indicators: {
@@ -737,3 +794,15 @@ function generateFallbackAnalysis(
     };
 }
 
+/**
+ * Helper: Format patterns with stars based on strength
+ */
+function formatPatternsWithStars(tf: any): string[] {
+    if (!tf || !tf.patterns || tf.patterns.length === 0) return ['No significant patterns'];
+
+    // Map strength to stars
+    const strength = tf.strength || 50;
+    const stars = strength > 80 ? '⭐⭐⭐' : strength > 60 ? '⭐⭐' : strength > 40 ? '⭐' : '';
+
+    return tf.patterns.map((p: string) => `${p} ${stars}`.trim());
+}

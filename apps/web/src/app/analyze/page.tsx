@@ -335,6 +335,12 @@ const TimeframeRow = ({ label, patterns }: { label: string, patterns: string[] }
     </div>
 );
 
+const safeRender = (val: any) => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object') return JSON.stringify(val);
+    return val;
+};
+
 function ScenarioCard({ title, scenario, type, isPrimary }: { title: string; scenario: any; type: 'bullish' | 'bearish'; isPrimary: boolean }) {
     if (!scenario) return null;
 
@@ -375,7 +381,7 @@ function ScenarioCard({ title, scenario, type, isPrimary }: { title: string; sce
                 </div>
                 <div>
                     <h3 className={`text-xl font-bold ${styles.text}`}>{title}</h3>
-                    <span className={`${styles.subText} text-sm font-medium`}>{scenario.probability}% Probability</span>
+                    <span className={`${styles.subText} text-sm font-medium`}>{safeRender(scenario.probability)}% Probability</span>
                 </div>
             </div>
 
@@ -383,12 +389,12 @@ function ScenarioCard({ title, scenario, type, isPrimary }: { title: string; sce
                 <div className="grid grid-cols-2 gap-4">
                     <div className="p-3 bg-black/20 rounded-xl">
                         <span className="text-xs text-gray-400 block mb-1">Entry Zone</span>
-                        <span className="font-bold text-white">₹{scenario.tradePlan?.entry?.[0]} - ₹{scenario.tradePlan?.entry?.[1]}</span>
+                        <span className="font-bold text-white">₹{safeRender(scenario.tradePlan?.entry?.[0])} - ₹{safeRender(scenario.tradePlan?.entry?.[1])}</span>
                     </div>
                     <div className="p-3 bg-black/20 rounded-xl">
                         <span className="text-xs text-gray-400 block mb-1">Stop Loss</span>
-                        <span className="font-bold text-red-300">₹{scenario.tradePlan?.stopLoss}</span>
-                        <span className="text-xs text-gray-500 ml-1">({scenario.tradePlan?.stopLossPercent}%)</span>
+                        <span className="font-bold text-red-300">₹{safeRender(scenario.tradePlan?.stopLoss)}</span>
+                        <span className="text-xs text-gray-500 ml-1">({safeRender(scenario.tradePlan?.stopLossPercent)}%)</span>
                     </div>
                 </div>
 
@@ -399,8 +405,8 @@ function ScenarioCard({ title, scenario, type, isPrimary }: { title: string; sce
                             <div key={i} className="flex justify-between items-center">
                                 <span className="text-gray-300 font-medium">Target {i + 1}</span>
                                 <div className="flex items-center gap-3">
-                                    <span className="font-bold text-lg text-primary-200">₹{t.price}</span>
-                                    <span className="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded">{t.probability}% prob</span>
+                                    <span className="font-bold text-lg text-primary-200">₹{safeRender(t.price)}</span>
+                                    <span className="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded">{safeRender(t.probability)}% prob</span>
                                 </div>
                             </div>
                         ))}
@@ -409,10 +415,10 @@ function ScenarioCard({ title, scenario, type, isPrimary }: { title: string; sce
 
                 <div className="flex gap-2">
                     <span className="px-3 py-1 bg-white/5 rounded-lg text-xs font-medium text-gray-400">
-                        RR: 1:{scenario.tradePlan?.riskReward}
+                        RR: 1:{safeRender(scenario.tradePlan?.riskReward)}
                     </span>
                     <span className="px-3 py-1 bg-white/5 rounded-lg text-xs font-medium text-gray-400">
-                        Horizon: {scenario.timeHorizon}
+                        Horizon: {safeRender(scenario.timeHorizon)}
                     </span>
                 </div>
             </div>

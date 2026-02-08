@@ -136,8 +136,17 @@ export const performComprehensiveTechnicalAnalysis = (
 
     // Calculate indicators for each timeframe
     const dailyIndicators = calcIndicators(daily);
+    console.log(`[technicalAnalysis.ts:138] 1D Indicators: RSI ${dailyIndicators.rsi.value.toFixed(1)} (${dailyIndicators.rsi.interpretation}), MACD ${dailyIndicators.macd.trend}, MA ${dailyIndicators.ma.trend}`);
+
     const weeklyIndicators = weekly.length >= 5 ? calcIndicators(weekly) : null;
+    if (weeklyIndicators) {
+        console.log(`[technicalAnalysis.ts:142] 1W Indicators: RSI ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation}), MACD ${weeklyIndicators.macd.trend}, MA ${weeklyIndicators.ma.trend}`);
+    }
+
     const monthlyIndicators = monthly.length >= 5 ? calcIndicators(monthly) : null;
+    if (monthlyIndicators) {
+        console.log(`[technicalAnalysis.ts:147] 1M Indicators: RSI ${monthlyIndicators.rsi.value.toFixed(1)} (${monthlyIndicators.rsi.interpretation}), MACD ${monthlyIndicators.macd.trend}, MA ${monthlyIndicators.ma.trend}`);
+    }
 
     // Calculate patterns for each timeframe
     const dailyPatterns = analyzePatterns(daily);

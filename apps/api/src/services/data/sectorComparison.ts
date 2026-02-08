@@ -140,6 +140,8 @@ export async function compareSector(symbol: string, stockChangePercent: number):
         niftyChange
     );
 
+    console.log(`[sectorComparison.ts:143] ${symbol} (${stockChangePercent.toFixed(2)}%) vs ${sectorSymbol || 'NIFTY'} (${sectorChange?.toFixed(2) ?? 'N/A'}%) -> ${verdict}`);
+
     return {
         stockChange: stockChangePercent,
         stockSymbol: symbol,

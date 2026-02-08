@@ -50,6 +50,7 @@ export function calculatePatternConfluence(timeframes: TimeframePatterns): Patte
     // Analyze each timeframe
     for (const [tf, patterns] of Object.entries(timeframes)) {
         const bias = getPatternBias(patterns);
+        console.log(`[patternConfluence.ts:54] Timeframe ${tf}: ${bias.toUpperCase()} (${patterns.primary ? patterns.primary.name : 'No pattern'})`);
 
         if (bias === 'bullish') {
             bullishTimeframes.push(tf);

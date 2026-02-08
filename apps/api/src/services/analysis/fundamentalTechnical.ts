@@ -71,7 +71,10 @@ export function detectFundamentalTechnicalConflict(
         }
     }
 
+
+
     const hasConflict = conflictType !== 'NONE';
+    console.log(`[fundamentalTechnical.ts:76] Conflict Check: ${conflictType} (Adjustment: ${confidenceAdjustment})`);
 
     // Generate recommendation
     let recommendation = '';

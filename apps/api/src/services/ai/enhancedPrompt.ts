@@ -12,6 +12,8 @@ import type { ConfidenceResult } from '../analysis/confidenceScoring';
 // Re-export types for convenience
 export type { EnhancedNewsAnalysis, FundamentalData, ConfidenceResult };
 
+import type { MultiTimeframeAnalysis } from '../analysis/technicalAnalysis';
+
 export interface EnhancedPromptInput {
   stock: StockData;
   indicators: TechnicalIndicators;
@@ -27,255 +29,125 @@ export interface EnhancedPromptInput {
   patternConfluence?: any;
   ftConflict?: any;
   sectorComparison?: any;
+  multiTimeframe?: MultiTimeframeAnalysis;
 }
 
 /**
  * Build comprehensive enhanced analysis prompt
  */
 export const buildEnhancedPrompt = (input: EnhancedPromptInput): string => {
-  const { stock, indicators, patterns, news, fundamentals, technicalSummary, confidenceResult, weeklyIndicators, monthlyIndicators, weeklyPatterns, monthlyPatterns, patternConfluence, ftConflict, sectorComparison } = input;
+  const { stock, indicators, patterns, news, fundamentals, confidenceResult, weeklyIndicators, monthlyIndicators, patternConfluence, ftConflict, sectorComparison, multiTimeframe } = input;
   const { quote } = stock;
-  const { rsi, ma, sr, volume, macd } = indicators;
+  const { rsi, ma, macd } = indicators;
 
-  // Multi-timeframe section
-  const multiTimeframeSection = `📊 DAILY (1D):
-• RSI: ${rsi.value.toFixed(1)} (${rsi.interpretation})
-• MACD: ${macd.trend}
-• MA Trend: ${ma.trend} (SMA20: ₹${ma.sma20.toFixed(2)}, SMA50: ₹${ma.sma50.toFixed(2)})
-• Volume: ${volume.ratio.toFixed(2)}x average (${volume.trend})
-• Support/Resistance: ₹${sr.support.toFixed(2)} / ₹${sr.resistance.toFixed(2)}
-• Patterns: ${patterns.primary ? `${patterns.primary.name} (${patterns.primary.confidence}% confidence)` : 'None'}
+  // Use multiTimeframe data if available, otherwise fallback to basic
+  const dailyBias = multiTimeframe?.timeframes['1D'].trend || 'neutral';
+  const weeklyBias = multiTimeframe?.timeframes['1W'].trend || 'neutral';
+  const monthlyBias = multiTimeframe?.timeframes['1M'].trend || 'neutral';
 
-📊 WEEKLY (1W):
-${weeklyIndicators ? `• RSI: ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation})
-• MACD: ${weeklyIndicators.macd.trend}
-• MA Trend: ${weeklyIndicators.ma.trend}
-• Patterns: ${weeklyPatterns?.primary ? weeklyPatterns.primary.name : 'None'}` : '• Data unavailable'}
+  const prompt = `You are an expert stock analyst. Analyze ${quote.symbol}:
 
-📊 MONTHLY (1M):
-${monthlyIndicators ? `• RSI: ${monthlyIndicators.rsi.value.toFixed(1)} (${monthlyIndicators.rsi.interpretation})
-• MACD: ${monthlyIndicators.macd.trend}
-• MA Trend: ${monthlyIndicators.ma.trend}
-• Patterns: ${monthlyPatterns?.primary ? monthlyPatterns.primary.name : 'None'}` : '• Data unavailable'}`;
+📊 CURRENT PRICE: ₹${quote.price}
 
-  // Pattern confluence
-  const confluenceSection = patternConfluence ? `⚖️ TIMEFRAME CONFLUENCE:
-• Agreement: ${patternConfluence.agreement} (Score: ${patternConfluence.score}/100)
-• Bullish timeframes: ${patternConfluence.bullishTimeframes.join(', ') || 'None'}
-• Bearish timeframes: ${patternConfluence.bearishTimeframes.join(', ') || 'None'}
-• Neutral timeframes: ${patternConfluence.neutralTimeframes.join(', ') || 'None'}
-• Confidence Modifier: ${patternConfluence.confidenceModifier > 0 ? '+' : ''}${patternConfluence.confidenceModifier}%
-• Recommendation: ${patternConfluence.recommendation}` : '';
+═══════════════════════════════════════
+MULTI-TIMEFRAME TECHNICAL ANALYSIS
+═══════════════════════════════════════
 
-  // Breaking news
-  const breakingNewsSection = news.breakingNews && news.breakingNews.length > 0
-    ? `🚨 BREAKING NEWS (< 2 hours):
-${news.breakingNews.map((n: any) => `• ${n.title} (${n.sentiment.toUpperCase()})`).join('\n')}
-• Impact Level: ${news.breakingImpact}
-⚠️ NOTE: ${news.breakingImpact === 'HIGH' ? 'High-impact breaking news detected - adjust confidence accordingly!' : 'Breaking news may affect short-term price action'}`
-    : '🚨 BREAKING NEWS: None in last 2 hours';
+📈 DAILY (1D) - Short-term view:
+├─ RSI: ${rsi.value.toFixed(1)} (${rsi.interpretation})
+├─ MACD: ${macd.trend}
+├─ Moving Average: ${ma.trend} (SMA20: ${ma.sma20.toFixed(2)}, SMA50: ${ma.sma50.toFixed(2)})
+├─ Patterns: ${patterns.primary ? patterns.primary.name : 'None'}
+└─ Overall Bias: ${dailyBias.toUpperCase()}
 
-  // Fundamental-technical conflict
-  const ftConflictSection = ftConflict ? `💰 FUNDAMENTAL-TECHNICAL ANALYSIS:
-• Technical Bias: ${ftConflict.technicalBias}
-• Fundamental Verdict: ${ftConflict.fundamentalVerdict}
-${ftConflict.hasConflict ? `⚠️ CONFLICT DETECTED: ${ftConflict.conflictType}
-• Confidence Adjustment: ${ftConflict.confidenceAdjustment > 0 ? '+' : ''}${ftConflict.confidenceAdjustment}%
-• Recommendation: ${ftConflict.recommendation}` : '✅ Technical and fundamental analysis are aligned'}` : '';
+📊 WEEKLY (1W) - Medium-term view:
+${weeklyIndicators ? `├─ RSI: ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation})
+├─ MACD: ${weeklyIndicators.macd.trend}
+├─ Moving Average: ${weeklyIndicators.ma.trend}
+├─ Patterns: ${input.weeklyPatterns?.primary ? input.weeklyPatterns.primary.name : 'None'}
+└─ Overall Bias: ${weeklyBias.toUpperCase()}` : '└─ Data unavailable'}
 
-  // Sector comparison
-  const sectorSection = sectorComparison ? `📈 SECTOR COMPARISON:
-• Stock Change: ${sectorComparison.stockChange > 0 ? '+' : ''}${sectorComparison.stockChange.toFixed(2)}%
-• ${sectorComparison.sectorSymbol || 'NIFTY'} Change: ${sectorComparison.sectorChange !== null ? ((sectorComparison.sectorChange > 0 ? '+' : '') + sectorComparison.sectorChange.toFixed(2) + '%') : 'N/A'}
-• Outperformance: ${sectorComparison.outperformance !== null ? ((sectorComparison.outperformance > 0 ? '+' : '') + sectorComparison.outperformance.toFixed(2) + '%') : 'N/A'}
-• Verdict: ${sectorComparison.verdict}
-• Confidence Modifier: ${sectorComparison.confidenceModifier > 0 ? '+' : ''}${sectorComparison.confidenceModifier}%` : '';
+📉 MONTHLY (1M) - Long-term view:
+${monthlyIndicators ? `├─ RSI: ${monthlyIndicators.rsi.value.toFixed(1)} (${monthlyIndicators.rsi.interpretation})
+├─ MACD: ${monthlyIndicators.macd.trend}
+├─ Moving Average: ${monthlyIndicators.ma.trend}
+├─ Patterns: ${input.monthlyPatterns?.primary ? input.monthlyPatterns.primary.name : 'None'}
+└─ Overall Bias: ${monthlyBias.toUpperCase()}` : '└─ Data unavailable'}
 
-  // News summary
-  const newsSection = news.items.length > 0
-    ? news.latestHeadlines.slice(0, 5).map((h: string, i: number) => `  ${i + 1}. ${h}`).join('\n')
-    : '  • No significant news in last 24 hours';
+⚖️ TIMEFRAME CONFLUENCE:
+${patternConfluence ? `├─ Bullish timeframes: ${patternConfluence.bullishTimeframes.join(', ') || 'None'}
+├─ Bearish timeframes: ${patternConfluence.bearishTimeframes.join(', ') || 'None'}
+├─ Neutral timeframes: ${patternConfluence.neutralTimeframes.join(', ') || 'None'}
+├─ Agreement Score: ${patternConfluence.score}/100 (${patternConfluence.agreement})
+└─ Recommendation: ${patternConfluence.recommendation}` : '└─ Data unavailable'}
 
-  // Fundamentals summary
-  const fundSection = `• Valuation: ${fundamentals.valuation}
-• Growth: ${fundamentals.growth}
-• P/E Ratio: ${fundamentals.metrics.peRatio || 'N/A'}
-• P/B Ratio: ${fundamentals.metrics.pbRatio || 'N/A'}
-• Dividend Yield: ${fundamentals.metrics.dividendYield ? fundamentals.metrics.dividendYield + '%' : 'N/A'}
-• Sector Performance: ${fundamentals.sectorComparison}`;
+${news.breakingNews && news.breakingNews.length > 0 ? `
+🚨 BREAKING NEWS (< 2 hours old):
+${news.breakingNews.map((n: any) => `├─ [${n.sentiment.toUpperCase()}] ${n.title}`).join('\n')}
+└─ Impact: ${news.breakingImpact}` : ''}
 
-  // Our confidence breakdown
-  const confidenceSection = `Pre-calculated Confidence Score: ${confidenceResult.score}/100
-Recommendation Hint: ${confidenceResult.recommendation}
+💰 FUNDAMENTAL vs TECHNICAL:
+${ftConflict ? (ftConflict.hasConflict ? `
+⚠️ CONFLICT DETECTED: ${ftConflict.conflictType}
+├─ Technical Bias: ${ftConflict.technicalBias}
+├─ Fundamental Verdict: ${ftConflict.fundamentalVerdict}
+└─ Adjustment: ${ftConflict.confidenceAdjustment}%` : '✅ No conflict - fundamentals support technical setup') : '└─ Data unavailable'}
 
-Score Breakdown:
-• Pattern Strength: ${confidenceResult.breakdown.patternStrength}/100 (25% weight)
-• News Sentiment: ${confidenceResult.breakdown.newsSentiment}/100 (20% weight)
-• Technical Alignment: ${confidenceResult.breakdown.technicalAlignment}/100 (25% weight)
-• Volume Confirmation: ${confidenceResult.breakdown.volumeConfirmation}/100 (15% weight)
-• Fundamental Strength: ${confidenceResult.breakdown.fundamentalStrength}/100 (15% weight)
+📊 SECTOR COMPARISON:
+${sectorComparison ? `├─ Stock Change: ${sectorComparison.stockChange.toFixed(2)}%
+├─ Sector Change: ${sectorComparison.sectorChange ? sectorComparison.sectorChange.toFixed(2) + '%' : 'N/A'}
+├─ Outperformance: ${sectorComparison.outperformance ? sectorComparison.outperformance.toFixed(2) + '%' : 'N/A'}
+└─ Verdict: ${sectorComparison.verdict}` : '└─ Data unavailable'}
 
-Key Factors:
-${confidenceResult.factors.slice(0, 8).map((f: string) => `• ${f}`).join('\n')}`;
+═══════════════════════════════════════
+YOUR ANALYSIS TASK
+═══════════════════════════════════════
 
-  return `You are an EXPERT Indian stock market analyst providing actionable trading recommendations.
+1️⃣ TIMEFRAME ANALYSIS:
+   - Which timeframe shows the strongest setup?
+   - Do 2+ timeframes confirm the same direction?
+   - Is there a conflict between short-term and long-term trends?
 
-═══════════════════════════════════════════════════════════════
-COMPREHENSIVE STOCK ANALYSIS: ${quote.symbol}
-═══════════════════════════════════════════════════════════════
+2️⃣ CONFLUENCE CHECK:
+   - How many indicators align on each timeframe?
+   - Is there a "golden cross" or "death cross" on any timeframe?
+   - Do RSI levels support the price action?
 
-CURRENT MARKET DATA:
-• Current Price: ₹${quote.price}
-• Change: ${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent}%
-• Day Range: ₹${quote.dayLow} - ₹${quote.dayHigh}
-• Previous Close: ₹${quote.previousClose}
+3️⃣ NEWS & FUNDAMENTALS:
+   - Does breaking news invalidate the technical setup?
+   - Should the fundamental conflict reduce our confidence?
 
-${technicalSummary}
+4️⃣ RISK ASSESSMENT:
+   - What are the key risks to this trade?
+   - What could invalidate the setup?
 
-═══════════════════════════════════════════════════════════════
-MULTI-TIMEFRAME TECHNICAL ANALYSIS:
-═══════════════════════════════════════════════════════════════
-${multiTimeframeSection}
+═══════════════════════════════════════
+DECISION RULES (MUST FOLLOW)
+═══════════════════════════════════════
 
-${confluenceSection}
+✅ HIGH PROBABILITY (70-85%):
+   - 3+ timeframes align in same direction
+   - Strong pattern confluence score (>75)
+   - No breaking negative news
+   - No fundamental conflicts OR conflict is minor
 
-═══════════════════════════════════════════════════════════════
-${breakingNewsSection}
-═══════════════════════════════════════════════════════════════
+⚠️ MEDIUM PROBABILITY (50-70%):
+   - 2 timeframes align
+   - Moderate confluence (50-75)
+   - Minor news or fundamental issues
 
-${ftConflictSection ? ftConflictSection + '\n\n' : ''}${sectorSection ? sectorSection + '\n\n' : ''}PATTERN ANALYSIS:
-• Primary Pattern: ${patterns.primary ? `${patterns.primary.name} (${patterns.primary.confidence}% confidence)` : 'No clear pattern'}
-• Trend Direction: ${patterns.trend.direction}
-• Trend Strength: ${patterns.trend.strength}%
-• At Breakout: ${patterns.atBreakout ? 'YES' : 'No'}
-• At Breakdown: ${patterns.atBreakdown ? 'YES' : 'No'}
+❌ LOW PROBABILITY (<50%):
+   - Only 1 timeframe bullish/bearish
+   - Conflicting signals across timeframes
+   - Major fundamental conflicts
+   - Breaking negative news overrides technicals
 
-NEWS SENTIMENT (Last 24 hours):
-• Overall Sentiment: ${news.sentiment} (Score: ${news.sentimentScore}/100)
-• Impact Level: ${news.impactLevel}
-Headlines:
-${newsSection}
+🚫 NO TRADE (WAIT):
+   - Strong conflict (1D bullish but 1M bearish)
+   - Breaking negative news on bullish setup
+   - Confluence score < 40
 
-FUNDAMENTAL DATA:
-${fundSection}
+Provide your analysis in the required JSON format with REALISTIC probabilities.`;
 
-SYSTEM CONFIDENCE ANALYSIS:
-${confidenceSection}
-
-═══════════════════════════════════════════════════════════════
-TRADING CONTEXT:
-═══════════════════════════════════════════════════════════════
-• Max Capital: ₹${TRADING.CAPITAL}
-• Max Risk Per Trade: ₹${TRADING.MAX_RISK}
-• Preferred Style: Swing Trading (2-10 days)
-• Min Risk/Reward: 1.5
-
-═══════════════════════════════════════════════════════════════
-YOUR ANALYSIS TASK:
-═══════════════════════════════════════════════════════════════
-
-Based on ALL the data above, provide a comprehensive analysis:
-
-1. VALIDATE OR ADJUST the system's confidence score (${confidenceResult.score}/100)
-2. CONFIRM OR MODIFY the recommendation (${confidenceResult.recommendation})
-3. IDENTIFY the strongest signal (technical or fundamental)
-4. LIST specific risks that could invalidate this trade
-5. PROVIDE precise entry, targets, and stop-loss levels
-
-CRITICAL RULES FOR MULTI-TIMEFRAME ANALYSIS:
-• If only 1 timeframe is bullish → Max confidence 60%
-• If 2+ timeframes align → Can go up to 85% confidence
-• If breaking negative news exists → Cap bullish probability at 50%
-• If fundamental-technical conflict → Reduce confidence by the modifier shown
-• If pattern confluence is CONFLICT → Recommend WAIT or smaller position
-• Strong sector outperformance → Boost confidence
-• Acknowledge ALL conflicts explicitly
-
-GENERAL RULES:
-• Never guarantee 100% accuracy - markets are unpredictable
-• If confidence is below 60%, recommend WAIT or HOLD
-• If signals conflict, explain the conflict and adjust accordingly
-• Be specific with prices - use exact numbers
-• Consider breaking news impact on short-term price action
-
-═══════════════════════════════════════════════════════════════
-REQUIRED JSON OUTPUT FORMAT:
-═══════════════════════════════════════════════════════════════
-
-{
-  "symbol": "${quote.symbol}",
-  "currentPrice": ${quote.price},
-  "recommendation": "BUY" | "SELL" | "HOLD" | "WAIT",
-  "confidenceScore": 0-100,
-  "adjustedFromSystem": true/false,
-  "adjustmentReason": "Why you adjusted the system score, if any",
-  "timeframe": "intraday" | "short-term" | "swing" | "long-term",
-  
-  "analysis": {
-    "strongestSignal": "Description of the most reliable signal",
-    "signalType": "technical" | "fundamental" | "news" | "combined",
-    "conflicts": ["List any conflicting signals"],
-    "technicalSummary": "Brief technical outlook",
-    "newsSummary": "Brief news impact assessment"
-  },
-  
-  "priceTargets": {
-    "entry": ${quote.price},
-    "target1": 0,
-    "target2": 0,
-    "stopLoss": 0,
-    "riskReward": 0
-  },
-  
-  "risks": ["Risk 1", "Risk 2", "Risk 3"],
-  
-  "reasoning": "Step-by-step explanation of your analysis and why you made this recommendation",
-  
-  "bias": "BULLISH" | "BEARISH" | "NEUTRAL",
-  "confidence": "HIGH" | "MEDIUM" | "LOW",
-  "category": "STRONG_SETUP" | "NEUTRAL" | "AVOID",
-  
-  "bullish": {
-    "probability": 0,
-    "score": 0,
-    "trigger": "Entry trigger condition",
-    "confirmation": "What confirms the move",
-    "tradePlan": {
-      "action": "BUY",
-      "entry": [${sr.support}, ${sr.resistance}],
-      "stopLoss": ${sr.support * 0.98},
-      "stopLossPercent": 2.0,
-      "targets": [{"price": 0, "probability": 0}],
-      "riskReward": 1.5,
-      "potentialProfit": [0, 0]
-    },
-    "factors": ["Factor 1", "Factor 2"],
-    "timeHorizon": "3-7 days"
-  },
-  
-  "bearish": {
-    "probability": 0,
-    "score": 0,
-    "trigger": "Bearish trigger",
-    "confirmation": "Bearish confirmation",
-    "tradePlan": {
-      "action": "SELL" | "AVOID",
-      "entry": [0, 0],
-      "stopLoss": 0,
-      "stopLossPercent": 0,
-      "targets": [{"price": 0, "probability": 0}],
-      "riskReward": 0,
-      "potentialProfit": [0, 0]
-    },
-    "factors": ["Risk factor 1", "Risk factor 2"],
-    "timeHorizon": "1-5 days"
-  }
-}
-
-VALIDATION RULES:
-1. bullish.probability + bearish.probability MUST = 100
-2. Only return valid JSON, no markdown code blocks
-3. Be specific with all price levels
-4. Include at least 3 risks
-5. Explain your reasoning clearly`;
+  return prompt;
 };
