@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star } from 'lucide-react';
+import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star, Menu, X } from 'lucide-react';
 import { WatchlistPanel } from '../dashboard/WatchlistPanel';
 import { useWatchlist } from '@/context/WatchlistContext';
 
 export function Navbar() {
     const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { watchlist } = useWatchlist();
 
     return (
@@ -31,42 +32,72 @@ export function Navbar() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 md:gap-4">
+                        <div className="flex items-center gap-1 md:gap-4">
+                            <button
+                                onClick={() => setIsWatchlistOpen(true)}
+                                className="p-2 text-muted-foreground hover:text-amber-500 transition-colors relative"
+                            >
+                                <Star size={20} className={watchlist.length > 0 ? 'text-amber-500' : ''} fill={watchlist.length > 0 ? 'currentColor' : 'none'} />
+                                {watchlist.length > 0 && (
+                                    <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-[16px] px-1 bg-amber-500 rounded-full border-2 border-zinc-950 text-[8px] font-black text-white italic">
+                                        {watchlist.length}
+                                    </span>
+                                )}
+                            </button>
+                            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
+                                <Settings size={20} />
+                            </button>
+                            <div className="hidden md:block h-4 w-px bg-border mx-2" />
+                            <div className="hidden md:flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-primary-500/10 border border-primary-500/20 flex items-center justify-center text-[10px] font-bold text-primary-500">
+                                    JD
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Mobile Menu Toggle */}
                         <button
-                            onClick={() => setIsWatchlistOpen(true)}
-                            className="p-2 text-muted-foreground hover:text-amber-500 transition-colors relative"
+                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                            className="p-2 text-muted-foreground hover:text-foreground transition-colors md:hidden"
                         >
-                            <Star size={20} className={watchlist.length > 0 ? 'text-amber-500' : ''} fill={watchlist.length > 0 ? 'currentColor' : 'none'} />
-                            {watchlist.length > 0 && (
-                                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-[16px] px-1 bg-amber-500 rounded-full border-2 border-zinc-950 text-[8px] font-black text-white italic">
-                                    {watchlist.length}
-                                </span>
-                            )}
+                            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
                         </button>
-                        <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-                            <Settings size={20} />
-                        </button>
-                        <div className="h-4 w-px bg-border mx-2" />
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary-500/10 border border-primary-500/20 flex items-center justify-center text-[10px] font-bold text-primary-500">
-                                JD
+                    </div>
+                </div>
+
+                {/* Mobile Menu Overlay */}
+                {isMobileMenuOpen && (
+                    <div className="md:hidden absolute top-16 left-0 right-0 border-b border-border bg-background/95 backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-200">
+                        <div className="p-4 flex flex-col gap-2">
+                            <NavLink href="/" icon={<LayoutDashboard size={18} />} label="Dashboard" onClick={() => setIsMobileMenuOpen(false)} />
+                            <NavLink href="/analyze" icon={<Search size={18} />} label="Scanner" onClick={() => setIsMobileMenuOpen(false)} />
+                            <NavLink href="/history" icon={<History size={18} />} label="History" onClick={() => setIsMobileMenuOpen(false)} />
+                            <NavLink href="/journal" icon={<BookOpen size={18} />} label="Journal" onClick={() => setIsMobileMenuOpen(false)} />
+                            <div className="h-px bg-border my-2" />
+                            <div className="flex items-center gap-3 px-4 py-2">
+                                <div className="w-8 h-8 rounded-full bg-primary-500/10 border border-primary-500/20 flex items-center justify-center text-[10px] font-bold text-primary-500">
+                                    JD
+                                </div>
+                                <span className="text-sm font-medium text-muted-foreground">John Doe</span>
                             </div>
                         </div>
                     </div>
-                </div>
+                )}
             </nav>
             <WatchlistPanel isOpen={isWatchlistOpen} onClose={() => setIsWatchlistOpen(false)} />
         </>
     );
 }
 
-function NavLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+function NavLink({ href, icon, label, onClick }: { href: string; icon: React.ReactNode; label: string; onClick?: () => void }) {
     const pathname = usePathname();
     const isActive = pathname === href;
 
     return (
         <Link
             href={href}
+            onClick={onClick}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${isActive
                 ? 'bg-primary-500/10 text-primary-500'
                 : 'text-muted-foreground hover:text-foreground hover:bg-white/[0.03]'
