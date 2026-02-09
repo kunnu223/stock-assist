@@ -1,65 +1,46 @@
-/**
- * Watchlist Routes
- * @module @stock-assist/api/routes/watchlist
- */
+import { Router } from 'express';
+import { Watchlist } from '../models/Watchlist';
 
-import { Router, Request, Response } from 'express';
-import { Watchlist } from '../models';
-import { DEFAULT_WATCHLIST } from '@stock-assist/shared';
+const router = Router();
 
-export const watchlistRouter = Router();
-
-/** GET /api/watchlist - Get watchlist */
-watchlistRouter.get('/', async (_req: Request, res: Response) => {
+// GET /api/watchlist - List all followed stocks
+router.get('/', async (req, res) => {
     try {
-        let watchlist = await Watchlist.findOne({ userId: 'default' });
-
-        if (!watchlist) {
-            const symbols = DEFAULT_WATCHLIST.map((s: any) => typeof s === 'string' ? s : s.symbol);
-            watchlist = new Watchlist({
-                userId: 'default',
-                stocks: symbols,
-            });
-            await watchlist.save();
-        }
-
-        res.json({ success: true, stocks: watchlist.stocks });
+        const list = await Watchlist.find().sort({ addedAt: -1 });
+        res.json({ success: true, data: list });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        res.status(500).json({ success: false, message: 'Failed to fetch watchlist' });
     }
 });
 
-/** POST /api/watchlist - Add stock */
-watchlistRouter.post('/', async (req: Request, res: Response) => {
-    const { symbol } = req.body;
-    if (!symbol) return res.status(400).json({ success: false, error: 'Symbol required' });
+// POST /api/watchlist - Add a stock to watchlist
+router.post('/', async (req, res) => {
+    const { symbol, notes } = req.body;
+    if (!symbol) {
+        return res.status(400).json({ success: false, message: 'Symbol is required' });
+    }
 
     try {
-        let watchlist = await Watchlist.findOne({ userId: 'default' });
-        if (!watchlist) watchlist = new Watchlist({ userId: 'default', stocks: [] });
-
-        const upper = symbol.toUpperCase();
-        if (!watchlist.stocks.includes(upper)) {
-            watchlist.stocks.push(upper);
-            await watchlist.save();
-        }
-
-        res.json({ success: true, stocks: watchlist.stocks });
+        const entry = await Watchlist.findOneAndUpdate(
+            { symbol: symbol.toUpperCase() },
+            { symbol: symbol.toUpperCase(), notes, addedAt: new Date() },
+            { upsert: true, new: true }
+        );
+        res.json({ success: true, data: entry });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        res.status(500).json({ success: false, message: 'Failed to add to watchlist' });
     }
 });
 
-/** DELETE /api/watchlist/:symbol - Remove stock */
-watchlistRouter.delete('/:symbol', async (req: Request, res: Response) => {
+// DELETE /api/watchlist/:symbol - Remove a stock from watchlist
+router.delete('/:symbol', async (req, res) => {
+    const { symbol } = req.params;
     try {
-        const watchlist = await Watchlist.findOne({ userId: 'default' });
-        if (watchlist) {
-            watchlist.stocks = watchlist.stocks.filter((s: string) => s !== req.params.symbol.toUpperCase());
-            await watchlist.save();
-        }
-        res.json({ success: true, stocks: watchlist?.stocks || [] });
+        await Watchlist.findOneAndDelete({ symbol: symbol.toUpperCase() });
+        res.json({ success: true, message: 'Removed from watchlist' });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        res.status(500).json({ success: false, message: 'Failed to remove from watchlist' });
     }
 });
+
+export const watchlistRouter = router;

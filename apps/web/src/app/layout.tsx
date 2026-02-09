@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Navbar } from '@/components/layout/Navbar';
+import { WatchlistProvider } from '@/context/WatchlistContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -17,11 +18,13 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en">
-            <body className={`${inter.className} gradient-bg min-h-screen`}>
-                <Navbar />
-                <main className="container mx-auto px-4 py-6">
-                    {children}
-                </main>
+            <body className={`${inter.className} bg-background text-foreground min-h-screen selection:bg-primary-500/30`}>
+                <WatchlistProvider>
+                    <Navbar />
+                    <main className="pt-24 pb-12">
+                        {children}
+                    </main>
+                </WatchlistProvider>
             </body>
         </html>
     );

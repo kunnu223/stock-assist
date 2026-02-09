@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Filter, Download, RefreshCw, TrendingUp } from 'lucide-react';
+import { Search, Filter, Download, RefreshCw, TrendingUp, History, Calendar as CalendarIcon } from 'lucide-react';
 import { StockCard } from '@/components/dashboard/StockCard';
 import { Modal } from '@/components/ui/Modal';
 import { AnalysisDetail } from '@/components/analysis/AnalysisDetail';
@@ -73,136 +73,113 @@ export default function HistoryPage() {
     };
 
     return (
-        <div className="space-y-8 pb-20">
+        <div className="space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-10">
             {/* Header section */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div className="space-y-2">
-                    <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-400 text-[10px] font-black uppercase tracking-widest">
-                        <TrendingUp size={12} />
-                        <span>Analysis Insights</span>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-10">
+                <div className="space-y-4">
+                    <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-500 text-[10px] font-black uppercase tracking-widest">
+                        <History size={12} />
+                        <span>Audit Log</span>
                     </div>
-                    <h1 className="text-4xl font-black text-white tracking-tighter uppercase">Trade <span className="text-primary-500">History</span></h1>
-                    <p className="text-gray-500 max-w-xl font-medium">Review and download your historical AI stock analysis from the last 60 days. Filter by performance metrics to find the best setups.</p>
+                    <h1 className="text-5xl font-bold text-foreground tracking-tight">Intelligence <span className="text-primary-500">History</span></h1>
+                    <p className="text-muted-foreground max-w-xl font-medium">Access your comprehensive audit log of historical AI stock analysis from the last 60 days.</p>
                 </div>
 
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => setShowFilters(!showFilters)}
-                        className={`flex items-center gap-2 px-6 py-3 rounded-2xl transition-all font-black uppercase tracking-widest text-[10px] ${showFilters ? 'bg-primary-500 text-white shadow-xl shadow-primary-500/20' : 'glass text-gray-400 hover:text-white border border-white/5'}`}
+                        className={`flex items-center gap-2 px-6 py-4 rounded-lg transition-all font-black uppercase tracking-widest text-[10px] border ${showFilters ? 'bg-primary-600 border-primary-600 text-white' : 'bg-zinc-900 border-border text-muted-foreground hover:text-foreground'}`}
                     >
                         <Filter size={16} />
-                        Filters
+                        Advanced Filters
                     </button>
                     <button
                         onClick={handleDownload}
                         disabled={history.length === 0}
-                        className="flex items-center gap-2 px-6 py-3 bg-white text-black hover:bg-primary-400 hover:text-white rounded-2xl transition-all font-black uppercase tracking-widest text-[10px] shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-2 px-6 py-4 bg-foreground text-background hover:bg-zinc-200 rounded-lg transition-all font-black uppercase tracking-widest text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Download size={16} />
-                        Export JSON
+                        Export Dataset
                     </button>
                 </div>
             </div>
 
             {/* Advanced Filters Section */}
             {showFilters && (
-                <div className="glass rounded-[32px] p-8 border border-white/5 animate-in fade-in slide-in-from-top-4 duration-500">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                <div className="premium-card p-10 rounded-xl bg-zinc-950/50 animate-in fade-in slide-in-from-top-6 duration-700">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
                         {/* Search & Dates */}
-                        <div className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest ml-1">Search Symbol</label>
-                                <input
-                                    type="text"
-                                    placeholder="E.g. SBIN, RELIANCE..."
-                                    value={filters.symbol}
-                                    onChange={(e) => setFilters({ ...filters, symbol: e.target.value.toUpperCase() })}
-                                    className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-4 px-5 text-white font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all placeholder-gray-700"
-                                />
+                        <div className="space-y-8">
+                            <div className="space-y-3">
+                                <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">Instrument Search</label>
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
+                                    <input
+                                        type="text"
+                                        placeholder="Symbol (e.g., RELIANCE)"
+                                        value={filters.symbol}
+                                        onChange={(e) => setFilters({ ...filters, symbol: e.target.value.toUpperCase() })}
+                                        className="w-full bg-zinc-900 border border-border rounded-lg py-4 pl-12 pr-5 text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary-500 transition-all placeholder-zinc-700"
+                                    />
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest ml-1">Start Date</label>
+                                <div className="space-y-3">
+                                    <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">Start Point</label>
                                     <input
                                         type="date"
                                         value={filters.startDate}
                                         onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                                        className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-4 px-4 text-white font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+                                        className="w-full bg-zinc-900 border border-border rounded-lg py-4 px-4 text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary-500"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest ml-1">End Date</label>
+                                <div className="space-y-3">
+                                    <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">End Point</label>
                                     <input
                                         type="date"
                                         value={filters.endDate}
                                         onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                                        className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-4 px-4 text-white font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+                                        className="w-full bg-zinc-900 border border-border rounded-lg py-4 px-4 text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary-500"
                                     />
                                 </div>
                             </div>
                         </div>
 
                         {/* Sliders */}
-                        <div className="space-y-8">
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center px-1">
-                                    <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Min Confidence</label>
-                                    <span className="text-primary-400 font-black text-xs bg-primary-500/10 px-2 py-1 rounded-lg border border-primary-500/20">{filters.minConfidence}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0" max="100"
-                                    value={filters.minConfidence}
-                                    onChange={(e) => setFilters({ ...filters, minConfidence: parseInt(e.target.value) })}
-                                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-primary-500"
-                                />
-                            </div>
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center px-1">
-                                    <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Min Bullish</label>
-                                    <span className="text-green-400 font-black text-xs bg-green-500/10 px-2 py-1 rounded-lg border border-green-500/20">{filters.minBullish}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0" max="100"
-                                    value={filters.minBullish}
-                                    onChange={(e) => setFilters({ ...filters, minBullish: parseInt(e.target.value) })}
-                                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-primary-500"
-                                />
-                            </div>
+                        <div className="space-y-10">
+                            <FilterSlider label="Minimum Confidence" value={filters.minConfidence} onChange={(v) => setFilters({ ...filters, minConfidence: v })} />
+                            <FilterSlider label="Bullish Saturation" value={filters.minBullish} color="green" onChange={(v) => setFilters({ ...filters, minBullish: v })} />
                         </div>
 
-                        <div className="space-y-8">
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center px-1">
-                                    <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Min Bearish</label>
-                                    <span className="text-red-400 font-black text-xs bg-red-500/10 px-2 py-1 rounded-lg border border-red-500/20">{filters.minBearish}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0" max="100"
-                                    value={filters.minBearish}
-                                    onChange={(e) => setFilters({ ...filters, minBearish: parseInt(e.target.value) })}
-                                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-primary-500"
-                                />
-                            </div>
+                        <div className="space-y-10">
+                            <FilterSlider label="Bearish Saturation" value={filters.minBearish} color="red" onChange={(v) => setFilters({ ...filters, minBearish: v })} />
 
                             <button
                                 onClick={() => setFilters({ symbol: '', startDate: '', endDate: '', minConfidence: 0, minBullish: 0, minBearish: 0 })}
-                                className="w-full py-4 rounded-2xl border border-white/5 text-gray-500 hover:text-white hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest"
+                                className="w-full py-4 rounded-lg border border-border text-zinc-500 hover:text-foreground hover:bg-zinc-900 transition-all text-[10px] font-black uppercase tracking-widest"
                             >
-                                Reset Filters
+                                Clear Configuration
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* Metrics Dashboard */}
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-2">
+                <div className="flex items-center gap-4">
+                    <span>Dataset Size: <span className="text-foreground">{history.length} Entries</span></span>
+                    <div className="h-3 w-px bg-border" />
+                    <span>Retention: <span className="text-foreground">60 Days</span></span>
+                </div>
+                {loading && <RefreshCw className="animate-spin text-primary-500" size={14} />}
+            </div>
+
             {/* Results Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
                 {loading && history.length === 0 ? (
                     [1, 2, 3, 4, 5, 6].map(i => (
-                        <div key={i} className="glass h-[400px] rounded-[32px] animate-pulse bg-white/5 border border-white/5" />
+                        <div key={i} className="premium-card h-[420px] rounded-xl animate-pulse bg-zinc-900/50 border-border" />
                     ))
                 ) : history.length > 0 ? (
                     history.map((item) => (
@@ -214,8 +191,20 @@ export default function HistoryPage() {
                         />
                     ))
                 ) : (
-                    <div className="col-span-full py-32 text-center text-gray-500">
-                        No results found matching your criteria.
+                    <div className="col-span-full py-48 text-center border border-dashed border-border rounded-xl bg-zinc-950/20">
+                        <div className="max-w-xs mx-auto space-y-4">
+                            <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mx-auto border border-border">
+                                <Search size={24} className="text-zinc-700" />
+                            </div>
+                            <h3 className="text-xl font-bold text-foreground tracking-tight italic">ZERO MATCHES</h3>
+                            <p className="text-muted-foreground font-medium text-sm px-4">No historical records match your current filter parameters.</p>
+                            <button
+                                onClick={() => setFilters({ symbol: '', startDate: '', endDate: '', minConfidence: 0, minBullish: 0, minBearish: 0 })}
+                                className="text-primary-500 text-[10px] font-black uppercase tracking-widest hover:text-primary-400 transition-colors"
+                            >
+                                Reset To Defaults
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -224,10 +213,31 @@ export default function HistoryPage() {
             <Modal
                 isOpen={!!selectedItem}
                 onClose={() => setSelectedItem(null)}
-                title={`${selectedItem?.symbol} Historical Analysis Detail`}
+                title={`${selectedItem?.symbol} | Historical Intelligence Report`}
             >
                 {selectedItem && <AnalysisDetail data={selectedItem.analysis} />}
             </Modal>
+        </div>
+    );
+}
+
+function FilterSlider({ label, value, color, onChange }: { label: string, value: number, color?: string, onChange: (v: number) => void }) {
+    const accentColor = color === 'green' ? 'bg-emerald-500' : color === 'red' ? 'bg-rose-500' : 'bg-primary-500';
+    const textColor = color === 'green' ? 'text-emerald-500' : color === 'red' ? 'text-rose-500' : 'text-primary-500';
+
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center px-1">
+                <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">{label}</label>
+                <span className={`text-[11px] font-bold ${textColor}`}>{value}%</span>
+            </div>
+            <input
+                type="range"
+                min="0" max="100"
+                value={value}
+                onChange={(e) => onChange(parseInt(e.target.value))}
+                className={`w-full h-1 bg-zinc-900 rounded-full appearance-none cursor-pointer accent-current ${textColor}`}
+            />
         </div>
     );
 }

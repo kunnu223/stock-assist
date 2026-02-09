@@ -425,19 +425,7 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
 
         console.log(`[Analyze] ✅ Enhanced analysis complete for ${symbol} in ${response.processingTime}`);
 
-        // 1. Log to JSON file (legacy/backup)
-        try {
-            const logEntry = {
-                symbol: symbol,
-                requestDate: new Date().toISOString(),
-                responseData: response.analysis,
-                processingTime: response.processingTime
-            };
-            const logPath = path.join(process.cwd(), 'analysis_logs.json');
-            fs.appendFileSync(logPath, JSON.stringify(logEntry) + '\n\n');
-        } catch (e) { }
-
-        // 2. Store in DailyAnalysis History (One record per stock per day)
+        // Store in DailyAnalysis History (One record per stock per day)
         try {
             const today = new Date();
             today.setHours(0, 0, 0, 0);

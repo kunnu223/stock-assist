@@ -1,23 +1,29 @@
-/**
- * Watchlist Model
- * @module @stock-assist/api/models/Watchlist
- */
-
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IWatchlist extends Document {
-    userId: string;
-    stocks: string[];
+    symbol: string;
+    addedAt: Date;
+    notes?: string;
 }
 
-const WatchlistSchema = new Schema<IWatchlist>(
-    {
-        userId: { type: String, required: true, default: 'default' },
-        stocks: { type: [String], default: [] },
+const WatchlistSchema: Schema = new Schema({
+    symbol: {
+        type: String,
+        required: true,
+        unique: true,
+        uppercase: true,
+        trim: true
     },
-    { timestamps: true }
-);
+    addedAt: {
+        type: Date,
+        default: Date.now
+    },
+    notes: {
+        type: String
+    }
+});
 
-WatchlistSchema.index({ userId: 1 });
+// Index symbol for fast lookups
+WatchlistSchema.index({ symbol: 1 });
 
-export const Watchlist = mongoose.models.Watchlist || mongoose.model<IWatchlist>('Watchlist', WatchlistSchema);
+export const Watchlist = mongoose.model<IWatchlist>('Watchlist', WatchlistSchema);
