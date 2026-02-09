@@ -423,6 +423,17 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             }
         };
 
+        // Apply breaking news override capping
+        if (breakingNewsOverride && response.analysis.bullish && response.analysis.bullish.probability > 45) {
+            console.log(`[Analyze] Applying probability cap for ${symbol} due to negative breaking news: ${response.analysis.bullish.probability}% -> 45%`);
+            response.analysis.bullish.probability = 45;
+            // Also update bias if it was strongly bullish
+            if (response.analysis.recommendation === 'BUY') {
+                response.analysis.recommendation = 'HOLD';
+                response.analysis.bias = 'NEUTRAL';
+            }
+        }
+
         console.log(`[Analyze] ✅ Enhanced analysis complete for ${symbol} in ${response.processingTime}`);
 
         // Store in DailyAnalysis History (One record per stock per day)
@@ -774,7 +785,27 @@ async function analyzeWithEnhancedPrompt(prompt: string, symbol: string): Promis
         }
     }
 
-    console.error(`[EnhancedAI] ❌ All models failed for ${symbol}`);
+    console.error(`[EnhancedAI] ❌ All Groq models failed for ${symbol}, falling back to Gemini...`);
+
+    try {
+        // Use the existing analyzeWithGemini service as fallback
+        const { analyzeWithGemini } = await import('../services/ai/gemini');
+        // We need to construct a PromptInput
+        const geminiResult = await analyzeWithGemini({
+            stock: { symbol } as any, // Only symbol needed for prompt building in basic gemini service
+            indicators: {} as any,
+            patterns: {} as any,
+            news: { items: [] } as any
+        });
+
+        if (geminiResult) {
+            console.log(`[EnhancedAI] ✅ Successfully analyzed ${symbol} using Gemini Fallback`);
+            return geminiResult;
+        }
+    } catch (fallbackErr) {
+        console.error(`[EnhancedAI] ❌ Gemini fallback also failed:`, fallbackErr);
+    }
+
     return null;
 }
 

@@ -1,0 +1,232 @@
+﻿ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù
+Γòæ     ENHANCED STOCK ANALYSIS API TEST SUITE               Γòæ
+ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥
+
+============================================================
+Testing Enhanced Analysis for: RELIANCE
+============================================================
+
+Γ£à SUCCESS in 3.50s (API reported: 3.2s)
+
+--- RECOMMENDATION ---
+Symbol: RELIANCE
+Price: Γé╣1461.6
+Recommendation: BUY
+Confidence Score: 78/100
+Timeframe: swing
+Category: NEUTRAL
+
+--- TECHNICAL PATTERNS ---
+1D: ascending_triangle
+1W: support_bounce
+1M: No significant patterns
+Alignment: neutral
+
+--- INDICATORS ---
+RSI: 63.07 (neutral)
+MACD: bullish
+Volume Trend: low
+Bollinger Position: upper_half
+
+--- NEWS SENTIMENT ---
+Sentiment: neutral (52/100)
+Impact: high
+Headlines:
+  1. RIL shares fall over 2% post Q1 results; analysts say it missed estimates despit...
+  2. Reliance Industries share price in focus as Russian oil pullback report and Aust...
+  3. Reliance shares down over 3.5% after Q3 earnings announcement...
+
+--- FUNDAMENTALS ---
+Valuation: fair
+Growth: moderate
+P/E Ratio: 23.76
+
+--- PRICE TARGETS ---
+Entry: Γé╣1461.6
+Target 1: Γé╣1489.5
+Target 2: Γé╣1563.98
+Stop Loss: Γé╣1335.5
+Risk/Reward: 1.5
+
+--- CONFIDENCE BREAKDOWN ---
+Pattern Strength: 85/100 (25%)
+News Sentiment: 52/100 (20%)
+Technical Alignment: 75/100 (25%)
+Volume Confirmation: 30/100 (15%)
+Fundamental Strength: 55/100 (15%)
+
+--- ACCURACY METRICS ---
+Base Confidence: 63%
+Adjusted Confidence: 78%
+Breaking News Override: NO
+Pattern Agreement: STRONG (Score: 100)
+Sector Verdict: UNDERPERFORMER (Outperformance: -0.6100000000000001%)
+
+--- RISKS ---
+ΓÇó Market volatility
+ΓÇó Sector rotation
+ΓÇó Global economic factors
+
+--- REASONING ---
+Based on neutral multi-timeframe alignment and 63% confidence score...
+
+--- CANDLESTICK PATTERNS ---
+Bearish Engulfing (bearish)
+
+Valid Until: 2026-02-09T21:56:51.061Z
+
+ΓÅ│ Waiting 2s before next test...
+
+============================================================
+Testing Enhanced Analysis for: TCS
+============================================================
+
+Γ£à SUCCESS in 2.17s (API reported: 2.1s)
+
+--- RECOMMENDATION ---
+Symbol: TCS
+Price: Γé╣2948.2
+Recommendation: HOLD
+Confidence Score: 59/100
+Timeframe: swing
+Category: NEUTRAL
+
+--- TECHNICAL PATTERNS ---
+1D: descending_triangle
+1W: No significant patterns
+1M: No significant patterns
+Alignment: neutral
+
+--- INDICATORS ---
+RSI: 33.07 (neutral)
+MACD: bearish
+Volume Trend: normal
+Bollinger Position: below_lower
+
+--- NEWS SENTIMENT ---
+Sentiment: neutral (49/100)
+Impact: high
+Headlines:
+  1. TCS.NS Tata Consultancy Services NSE After Hours 09 Feb 2026: AI outlook...
+  2. TCS Partners with Flight Centre Travel Group for Enterprise Technology Transform...
+  3. Tata Consultancy Services Limited's (NSE:TCS) Stock Been Rising: Are Strong Fina...
+
+--- FUNDAMENTALS ---
+Valuation: fair
+Growth: weak
+P/E Ratio: 22.37
+
+--- PRICE TARGETS ---
+Entry: Γé╣2948.2
+Target 1: Γé╣3350
+Target 2: Γé╣3517.5
+Stop Loss: Γé╣2916
+Risk/Reward: 1.5
+
+--- CONFIDENCE BREAKDOWN ---
+Pattern Strength: 65/100 (25%)
+News Sentiment: 49/100 (20%)
+Technical Alignment: 50/100 (25%)
+Volume Confirmation: 50/100 (15%)
+Fundamental Strength: 50/100 (15%)
+
+--- ACCURACY METRICS ---
+Base Confidence: 54%
+Adjusted Confidence: 59%
+Breaking News Override: NO
+Pattern Agreement: MODERATE (Score: 67)
+Sector Verdict: UNDERPERFORMER (Outperformance: -1.1300000000000001%)
+
+--- RISKS ---
+ΓÇó Market volatility
+ΓÇó Sector rotation
+ΓÇó Global economic factors
+
+--- REASONING ---
+Based on neutral multi-timeframe alignment and 54% confidence score...
+
+--- CANDLESTICK PATTERNS ---
+Bearish Marubozu (bearish), Doji (neutral)
+
+Valid Until: 2026-02-09T21:56:55.304Z
+
+ΓÅ│ Waiting 2s before next test...
+
+============================================================
+Testing Enhanced Analysis for: HDFCBANK
+============================================================
+
+Γ£à SUCCESS in 1.84s (API reported: 1.8s)
+
+--- RECOMMENDATION ---
+Symbol: HDFCBANK
+Price: Γé╣937.25
+Recommendation: HOLD
+Confidence Score: 44/100
+Timeframe: swing
+Category: NEUTRAL
+
+--- TECHNICAL PATTERNS ---
+1D: No significant patterns
+1W: descending_triangle
+1M: No significant patterns
+Alignment: neutral
+
+--- INDICATORS ---
+RSI: 55.43 (neutral)
+MACD: bullish
+Volume Trend: normal
+Bollinger Position: middle
+
+--- NEWS SENTIMENT ---
+Sentiment: neutral (49/100)
+Impact: low
+Headlines:
+  1. HDFC Bank Sees Γé╣156.76 Crore Block Trade on NSE at Γé╣930.50 Per Share...
+  2. RBL Bank Share Price Today 6 Feb 2026: Live NSE/BSE Rates, Technical Analysis an...
+  3. HDFC Bank share price: Did the stock really fall 62% today? Here's what happened...
+
+--- FUNDAMENTALS ---
+Valuation: fair
+Growth: strong
+P/E Ratio: 20.92
+
+--- PRICE TARGETS ---
+Entry: Γé╣937.25
+Target 1: Γé╣994
+Target 2: Γé╣1043.7
+Stop Loss: Γé╣905
+Risk/Reward: 1.5
+
+--- CONFIDENCE BREAKDOWN ---
+Pattern Strength: 50/100 (25%)
+News Sentiment: 49/100 (20%)
+Technical Alignment: 75/100 (25%)
+Volume Confirmation: 50/100 (15%)
+Fundamental Strength: 70/100 (15%)
+
+--- ACCURACY METRICS ---
+Base Confidence: 59%
+Adjusted Confidence: 44%
+Breaking News Override: NO
+Pattern Agreement: WEAK (Score: 33)
+Sector Verdict: UNDERPERFORMER (Outperformance: -1.76%)
+
+--- RISKS ---
+ΓÇó Market volatility
+ΓÇó Sector rotation
+ΓÇó Global economic factors
+
+--- REASONING ---
+Based on neutral multi-timeframe alignment and 59% confidence score...
+
+--- CANDLESTICK PATTERNS ---
+Doji (neutral), Bearish Engulfing (bearish)
+
+Valid Until: 2026-02-09T21:56:59.180Z
+
+============================================================
+TEST SUMMARY: 3/3 passed, 0 failed
+============================================================
+
+≡ƒôè Performance target: < 5 seconds per analysis

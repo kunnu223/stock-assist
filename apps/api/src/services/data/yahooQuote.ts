@@ -22,7 +22,12 @@ const MAPPINGS: Record<string, string> = {
     'HDFC BANK': 'HDFCBANK.NS',
     'HDFCBANK': 'HDFCBANK.NS',
     'BAJAJ FINANCE': 'BAJFINANCE.NS',
-    'BAJFINANCE': 'BAJFINANCE.NS'
+    'BAJFINANCE': 'BAJFINANCE.NS',
+    // Indices
+    'NIFTY50': '^NSEI',
+    'BANKNIFTY': '^NSEBANK',
+    'NIFTYIT': '^CNXIT',
+    'NIFTYAUTO': '^CNXAUTO'
 };
 
 /** Convert symbol to NSE format */
