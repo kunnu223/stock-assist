@@ -14,6 +14,9 @@ import { validateStockData, validateAIResponse, calculateAverageVolume } from '.
 import { shouldTrade, checkRedFlags } from '../utils/tradeDecision';
 import { savePrediction, applyCalibration } from '../services/backtest';
 import { checkTimeframeAlignment, getAlignmentSummary } from '../utils/timeframeAlignment';
+import * as fs from 'fs';
+import * as path from 'path';
+import { DailyAnalysis } from '../models';
 
 // Enhanced analysis imports
 import { fetchEnhancedNews } from '../services/news/enhanced';
@@ -421,6 +424,41 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
         };
 
         console.log(`[Analyze] ✅ Enhanced analysis complete for ${symbol} in ${response.processingTime}`);
+
+        // 1. Log to JSON file (legacy/backup)
+        try {
+            const logEntry = {
+                symbol: symbol,
+                requestDate: new Date().toISOString(),
+                responseData: response.analysis,
+                processingTime: response.processingTime
+            };
+            const logPath = path.join(process.cwd(), 'analysis_logs.json');
+            fs.appendFileSync(logPath, JSON.stringify(logEntry) + '\n\n');
+        } catch (e) { }
+
+        // 2. Store in DailyAnalysis History (One record per stock per day)
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            await DailyAnalysis.findOneAndUpdate(
+                { symbol, date: today },
+                {
+                    symbol,
+                    date: today,
+                    confidenceScore: response.analysis.confidenceScore,
+                    bullishProb: response.analysis.bullish?.probability || 0,
+                    bearishProb: response.analysis.bearish?.probability || 0,
+                    analysis: response.analysis
+                },
+                { upsert: true, new: true }
+            );
+            console.log(`[Analyze] 🏛️ Daily analysis history updated for ${symbol}`);
+        } catch (dbError) {
+            console.warn(`[Analyze] ⚠️ Failed to save daily analysis for ${symbol}:`, dbError);
+        }
+
         res.json(response);
 
     } catch (error) {
@@ -430,6 +468,42 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             error: String(error),
             message: 'Enhanced analysis failed. Please try again.'
         });
+    }
+});
+
+/**
+ * GET /api/analyze/history - Fetch historical analysis with filters
+ */
+analyzeRouter.get('/history', async (req: Request, res: Response) => {
+    try {
+        const { symbol, startDate, endDate, minConfidence, minBullish, minBearish } = req.query;
+
+        const query: any = {};
+
+        if (symbol) query.symbol = { $regex: new RegExp(symbol as string, 'i') };
+
+        if (startDate || endDate) {
+            query.date = {};
+            if (startDate) query.date.$gte = new Date(startDate as string);
+            if (endDate) query.date.$lte = new Date(endDate as string);
+        }
+
+        if (minConfidence) query.confidenceScore = { $gte: Number(minConfidence) };
+        if (minBullish) query.bullishProb = { $gte: Number(minBullish) };
+        if (minBearish) query.bearishProb = { $gte: Number(minBearish) };
+
+        const history = await DailyAnalysis.find(query)
+            .sort({ date: -1, symbol: 1 })
+            .limit(100); // Sanity limit
+
+        res.json({
+            success: true,
+            count: history.length,
+            data: history
+        });
+    } catch (error) {
+        console.error('[Analyze] ❌ History fetch error:', error);
+        res.status(500).json({ success: false, error: String(error) });
     }
 });
 

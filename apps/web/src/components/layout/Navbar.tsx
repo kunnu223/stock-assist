@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { BarChart3, Search, BookOpen, Settings, Zap } from 'lucide-react';
+import { BarChart3, Search, BookOpen, Settings, Zap, History } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 
 export function Navbar() {
@@ -23,6 +23,7 @@ export function Navbar() {
                 <div className="hidden md:flex items-center space-x-1 bg-white/[0.03] p-1 rounded-2xl border border-white/5">
                     <NavLink href="/" icon={<BarChart3 size={18} />} label="Dashboard" active={pathname === '/'} />
                     <NavLink href="/analyze" icon={<Search size={18} />} label="Analyze" active={pathname === '/analyze'} />
+                    <NavLink href="/history" icon={<History size={18} />} label="History" active={pathname === '/history'} />
                     <NavLink href="/journal" icon={<BookOpen size={18} />} label="Journal" active={pathname === '/journal'} />
                     <NavLink href="/settings" icon={<Settings size={18} />} label="Settings" active={pathname === '/settings'} />
                 </div>
@@ -40,8 +41,8 @@ function NavLink({ href, icon, label, active }: { href: string; icon: React.Reac
         <Link
             href={href}
             className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 font-medium ${active
-                    ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
                 }`}
         >
             {icon}
