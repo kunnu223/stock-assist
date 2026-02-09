@@ -31,8 +31,8 @@ export const runTechnicalPreFilter = async (): Promise<FilteredStock[]> => {
 
     for (const symbol of symbols) {
         try {
-            // Fetch 30 days of history for accurate calculations
-            const history = await fetchHistory(symbol, '1mo', '1d');
+            // Fetch 3 months of history for accurate calculations (ensures 21+ days regardless of holidays/weekends)
+            const history = await fetchHistory(symbol, '3mo', '1d');
 
             if (history.length < 21) {
                 console.log(`⚠️ Skipping ${symbol}: Insufficient data (${history.length} days)`);
