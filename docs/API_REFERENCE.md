@@ -22,6 +22,7 @@ Production: https://your-domain.vercel.app/api
 | `/api/save-trade` | POST | Log a trade to journal |
 | `/api/get-analytics` | GET | Get performance statistics |
 | `/api/watchlist` | GET/POST/DELETE | Manage watchlist |
+| `/api/stocks/top-10` | GET | Get top 10 screened stocks |
 
 ---
 
@@ -520,6 +521,53 @@ Remove stock from watchlist.
   "stocks": ["RELIANCE", "TCS", "..."],
   "count": 9
 }
+```
+
+---
+
+## 6. Top 10 Stocks
+
+### `GET /api/stocks/top-10`
+
+Get the top 10 stocks screened from the NIFTY 100 universe based on technical signal clarity.
+
+> **Detailed Flow**: See [Top 10 Stock API Flow](./TOP_10_STOCKS_FLOW.md) for the complete screening algorithm.
+
+**Request:**
+```bash
+GET /api/stocks/top-10
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "stocks": [
+    {
+      "symbol": "RELIANCE",
+      "name": "Reliance Industries",
+      "price": 2450.50,
+      "changePercent": 1.2,
+      "confidence": 88,
+      "direction": "bullish",
+      "reason": "Strong Bullish (5/6 indicators agree)",
+      "technicalScore": 88,
+      "signalClarity": 83
+    }
+  ],
+  "count": 10,
+  "totalScanned": 100,
+  "updatedAt": "2026-02-06T10:00:00.000Z"
+}
+```
+
+### `POST /api/stocks/top-10/refresh`
+
+Force refresh the screening process.
+
+**Request:**
+```bash
+POST /api/stocks/top-10/refresh
 ```
 
 ---
