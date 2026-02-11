@@ -1,16 +1,17 @@
 /**
  * Stocks API Routes
- * Endpoints for fetching top stocks
+ * Endpoints for fetching top stocks screened from NIFTY 100
  */
 
 import express, { Request, Response } from 'express';
+import { NIFTY_100 } from '@stock-assist/shared';
 import { getTodayTopStocks, getYesterdayTopStocks } from '../services/screening/topStocks';
 
 const router = express.Router();
 
 /**
  * GET /api/stocks/top-10
- * Get today's top 10 stocks (cached for 1 hour)
+ * Get today's top 10 stocks (cached daily)
  */
 router.get('/top-10', async (req: Request, res: Response) => {
     try {
@@ -36,6 +37,7 @@ router.get('/top-10', async (req: Request, res: Response) => {
             success: true,
             stocks,
             count: stocks.length,
+            totalScanned: NIFTY_100.length,
             updatedAt: stocks[0]?.updatedAt || new Date(),
         });
     } catch (error: any) {
@@ -49,11 +51,11 @@ router.get('/top-10', async (req: Request, res: Response) => {
 
 /**
  * POST /api/stocks/top-10/refresh
- * Force refresh today's top stocks
+ * Force refresh today's top stocks (screens all 100 stocks)
  */
 router.post('/top-10/refresh', async (req: Request, res: Response) => {
     try {
-        console.log('🔄 POST /api/stocks/top-10/refresh');
+        console.log('🔄 POST /api/stocks/top-10/refresh — Screening', NIFTY_100.length, 'stocks...');
 
         const stocks = await getTodayTopStocks(true);
 
@@ -68,8 +70,9 @@ router.post('/top-10/refresh', async (req: Request, res: Response) => {
             success: true,
             stocks,
             count: stocks.length,
+            totalScanned: NIFTY_100.length,
             updatedAt: new Date(),
-            message: 'Successfully refreshed top 10 stocks',
+            message: `Screened ${NIFTY_100.length} stocks → selected top ${stocks.length}`,
         });
     } catch (error: any) {
         console.error('❌ Error refreshing top stocks:', error);
