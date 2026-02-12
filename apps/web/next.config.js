@@ -8,10 +8,12 @@ const nextConfig = {
   },
   
   async rewrites() {
+const API_URL = process.env.API_URL || 'http://localhost:4000';
+
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:4000/api/:path*',
+        destination: `${API_URL}/api/:path*`,
       },
     ];
   },

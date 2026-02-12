@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: stock-assist-api
+    env: node
+    region: singapore # Change this to your preferred region (ohio, frankfurt, etc)
+    plan: free
+    buildCommand: npm install && npm run build -w @stock-assist/shared && npm run build -w @stock-assist/api
+    startCommand: npm start -w @stock-assist/api
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false # User must provide this in dashboard
+      - key: GEMINI_API_KEY
+        sync: false # User must provide this in dashboard
+      - key: AI_PROVIDER
+        value: gemini
+      - key: FRONTEND_URL
+        sync: false # User must provide this after deploying frontend
