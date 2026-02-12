@@ -35,6 +35,15 @@ export interface SignalClarityResult {
     signals: IndicatorSignal[];   // Individual indicator signals
     agreementRatio: string;       // e.g. "5/6" — how many agree
     summary: string;              // e.g. "Strong Bullish (5/6 indicators agree)"
+    // Enhanced fields
+    signalAge: number;            // 1-3: how many consecutive days the signal persists
+    signalStrength: 'weak' | 'moderate' | 'strong';  // Human-readable persistence
+    volumeConfirmed: boolean;     // Whether volume validates the move
+    indicatorVotes: {
+        bullish: number;
+        bearish: number;
+        neutral: number;
+    };
 }
 
 // ─── Indicator Weights ──────────────────────────────────
@@ -238,18 +247,17 @@ const analyzeTrendSignal = (data: OHLCData[]): IndicatorSignal => {
 // ─── Main Scoring Function ──────────────────────────────
 
 /**
- * Calculate signal clarity for a stock.
- * Returns null if data is insufficient.
+ * Internal: Calculate signal clarity for a data slice (no persistence check).
+ * Used both for current data and for historical persistence checks.
  */
-export const calculateSignalClarity = (
+const calculateClarityForSlice = (
     symbol: string,
     data: OHLCData[]
-): SignalClarityResult | null => {
-    if (data.length < 26) return null; // Need at least 26 days for EMA26
+): { direction: SignalDirection; clarityScore: number; weightedScore: number; signals: IndicatorSignal[]; bullishVotes: number; bearishVotes: number; neutralVotes: number } | null => {
+    if (data.length < 26) return null;
 
     const prices = data.map(d => d.close);
 
-    // Calculate all signals
     const signals: IndicatorSignal[] = [
         analyzeRSI(prices),
         analyzeMACD(prices),
@@ -259,20 +267,14 @@ export const calculateSignalClarity = (
         analyzeTrendSignal(data),
     ];
 
-    // Count votes
     const bullishVotes = signals.filter(s => s.direction === 'bullish').length;
     const bearishVotes = signals.filter(s => s.direction === 'bearish').length;
-    const totalDirectional = bullishVotes + bearishVotes;
+    const neutralVotes = signals.filter(s => s.direction === 'neutral').length;
 
-    // Determine majority direction
     const direction: SignalDirection = bullishVotes >= bearishVotes ? 'bullish' : 'bearish';
     const majorityVotes = Math.max(bullishVotes, bearishVotes);
-
-    // Clarity score: how many agree out of total
-    // 6/6 agree → 100, 5/6 → 83, 4/6 → 67, 3/6 → 50 (filtered out)
     const rawClarity = (majorityVotes / signals.length) * 100;
 
-    // Weighted score: considers strength of each aligned signal
     const weights = [WEIGHTS.rsi, WEIGHTS.macd, WEIGHTS.maTrend, WEIGHTS.bollinger, WEIGHTS.volume, WEIGHTS.trend];
     let weightedScore = 0;
 
@@ -280,11 +282,77 @@ export const calculateSignalClarity = (
         if (signals[i].direction === direction) {
             weightedScore += weights[i] * signals[i].strength;
         } else if (signals[i].direction === 'neutral') {
-            // Neutral doesn't help but doesn't hurt much
             weightedScore += weights[i] * 10;
         }
-        // Opposing direction gets 0
     }
+
+    return {
+        direction,
+        clarityScore: Math.round(rawClarity),
+        weightedScore: Math.round(weightedScore),
+        signals,
+        bullishVotes,
+        bearishVotes,
+        neutralVotes,
+    };
+};
+
+/**
+ * Calculate signal persistence (signalAge).
+ * Checks if the majority direction is consistent across the last 1-3 days.
+ * signalAge = 3 means the signal has been consistent for 3 days (strongest).
+ */
+const calculateSignalAge = (
+    symbol: string,
+    data: OHLCData[],
+    currentDirection: SignalDirection
+): number => {
+    let age = 1; // Today always counts
+
+    // Check yesterday (data ending at [-2])
+    if (data.length >= 28) {
+        const yesterdayData = data.slice(0, -1);
+        const result = calculateClarityForSlice(symbol, yesterdayData);
+        if (result && result.direction === currentDirection && result.clarityScore >= MIN_CLARITY_THRESHOLD) {
+            age = 2;
+
+            // Check 2 days ago (data ending at [-3])
+            if (data.length >= 29) {
+                const twoDaysAgoData = data.slice(0, -2);
+                const result2 = calculateClarityForSlice(symbol, twoDaysAgoData);
+                if (result2 && result2.direction === currentDirection && result2.clarityScore >= MIN_CLARITY_THRESHOLD) {
+                    age = 3;
+                }
+            }
+        }
+    }
+
+    return age;
+};
+
+/**
+ * Calculate signal clarity for a stock.
+ * Returns null if data is insufficient.
+ * Includes signal persistence (signalAge) and volume confirmation.
+ */
+export const calculateSignalClarity = (
+    symbol: string,
+    data: OHLCData[]
+): SignalClarityResult | null => {
+    const result = calculateClarityForSlice(symbol, data);
+    if (!result) return null;
+
+    const { direction, clarityScore, weightedScore, signals, bullishVotes, bearishVotes, neutralVotes } = result;
+    const majorityVotes = Math.max(bullishVotes, bearishVotes);
+
+    // Signal persistence: check if direction was consistent 1-3 days ago
+    const signalAge = calculateSignalAge(symbol, data, direction);
+    const signalStrength: 'weak' | 'moderate' | 'strong' =
+        signalAge === 3 ? 'strong' : signalAge === 2 ? 'moderate' : 'weak';
+
+    // Volume confirmation
+    const volumeSignal = signals.find(s => s.name === 'Volume');
+    const volumeConfirmed = volumeSignal?.direction !== 'neutral' && (volumeSignal?.strength ?? 0) >= 30;
 
     // Build summary
     const agreementStr = `${majorityVotes}/${signals.length}`;
@@ -293,16 +361,25 @@ export const calculateSignalClarity = (
     else if (majorityVotes === 4) clarityLabel = 'Moderate';
     else clarityLabel = 'Weak';
 
-    const summary = `${clarityLabel} ${direction === 'bullish' ? '↑ Bullish' : '↓ Bearish'} (${agreementStr} indicators agree)`;
+    const persistStr = signalAge >= 2 ? ` [${signalAge}-day signal]` : '';
+    const summary = `${clarityLabel} ${direction === 'bullish' ? '↑ Bullish' : '↓ Bearish'} (${agreementStr} indicators agree)${persistStr}`;
 
     return {
         symbol,
         direction,
-        clarityScore: Math.round(rawClarity),
-        weightedScore: Math.round(weightedScore),
+        clarityScore,
+        weightedScore,
         signals,
         agreementRatio: agreementStr,
         summary,
+        signalAge,
+        signalStrength,
+        volumeConfirmed,
+        indicatorVotes: {
+            bullish: bullishVotes,
+            bearish: bearishVotes,
+            neutral: neutralVotes,
+        },
     };
 };
 

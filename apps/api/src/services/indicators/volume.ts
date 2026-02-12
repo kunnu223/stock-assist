@@ -4,7 +4,7 @@
  */
 
 import type { OHLCData, VolumeAnalysis, MACDResult } from '@stock-assist/shared';
-import { calcEMA } from './ma';
+import { calcEMA, calcEMAArray } from './ma';
 
 /** Analyze volume */
 export const analyzeVolume = (data: OHLCData[]): VolumeAnalysis => {
@@ -24,12 +24,40 @@ export const analyzeVolume = (data: OHLCData[]): VolumeAnalysis => {
     return { current, average: Math.round(average), ratio, trend };
 };
 
-/** Calculate MACD */
+/**
+ * Calculate MACD with proper EMA9 signal line
+ * MACD Line = EMA12 - EMA26
+ * Signal Line = EMA9 of MACD Line (NOT an approximation)
+ * Histogram = MACD Line - Signal Line
+ */
 export const calcMACD = (prices: number[]): MACDResult => {
-    const ema12 = calcEMA(prices, 12);
-    const ema26 = calcEMA(prices, 26);
-    const macd = Number((ema12 - ema26).toFixed(2));
-    const signal = Number((macd * 0.9).toFixed(2)); // Approximation
+    if (prices.length < 26) {
+        return { macd: 0, signal: 0, histogram: 0, trend: 'neutral' };
+    }
+
+    // Build full EMA12 and EMA26 arrays
+    const ema12Array = calcEMAArray(prices, 12);
+    const ema26Array = calcEMAArray(prices, 26);
+
+    // MACD line = EMA12 - EMA26 (aligned from period-26 onwards)
+    // ema12Array starts at index 12, ema26Array starts at index 26
+    // We need to align them: ema26Array[0] corresponds to price[26]
+    // ema12Array[14] also corresponds to price[26] (12 + 14 = 26)
+    const offset = 26 - 12; // = 14
+    const macdLine: number[] = [];
+    for (let i = 0; i < ema26Array.length; i++) {
+        macdLine.push(ema12Array[i + offset] - ema26Array[i]);
+    }
+
+    // Signal line = EMA9 of MACD line
+    if (macdLine.length < 9) {
+        const lastMacd = macdLine[macdLine.length - 1] || 0;
+        return { macd: Number(lastMacd.toFixed(2)), signal: 0, histogram: Number(lastMacd.toFixed(2)), trend: 'neutral' };
+    }
+
+    const signalArray = calcEMAArray(macdLine, 9);
+    const macd = Number(macdLine[macdLine.length - 1].toFixed(2));
+    const signal = Number(signalArray[signalArray.length - 1].toFixed(2));
     const histogram = Number((macd - signal).toFixed(2));
 
     let trend: 'bullish' | 'bearish' | 'neutral' = 'neutral';

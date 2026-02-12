@@ -28,6 +28,20 @@ export const calcEMA = (prices: number[], period: number): number => {
     return Number(ema.toFixed(2));
 };
 
+/** Calculate full EMA array (returns EMA value at each point from period onwards) */
+export const calcEMAArray = (prices: number[], period: number): number[] => {
+    if (prices.length < period) return [];
+    const mult = 2 / (period + 1);
+    let ema = calcSMA(prices.slice(0, period), period);
+    const result: number[] = [ema];
+
+    for (let i = period; i < prices.length; i++) {
+        ema = (prices[i] - ema) * mult + ema;
+        result.push(ema);
+    }
+    return result;
+};
+
 /** Calculate all moving averages */
 export const calcMA = (prices: number[]): MAResult => {
     const current = prices.length > 0 ? prices[prices.length - 1] : 0;

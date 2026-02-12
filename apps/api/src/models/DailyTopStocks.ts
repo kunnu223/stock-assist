@@ -24,6 +24,15 @@ export interface IStockPick {
     signalClarity: number;
     signals: IIndicatorSignal[];
     updatedAt: Date;
+    // Enhanced fields
+    volumeConfirmed: boolean;
+    indicatorVotes: {
+        bullish: number;
+        bearish: number;
+        neutral: number;
+    };
+    signalAge: number;
+    signalStrength: 'weak' | 'moderate' | 'strong';
 }
 
 export interface IDailyTopStocks extends Document {
@@ -32,6 +41,17 @@ export interface IDailyTopStocks extends Document {
     totalAnalyzed: number; // How many stocks were analyzed
     totalScanned: number;  // Total stocks in the universe
     createdAt: Date;
+    // Enhanced metadata
+    passedPreFilter: number;
+    passedClarity: number;
+    passedQualityGates: number;
+    avgConfidence: number;
+    scanDuration: number;
+    signalPersistence: {
+        age3: number;
+        age2: number;
+        age1: number;
+    };
 }
 
 const IndicatorSignalSchema = new Schema({
@@ -53,6 +73,15 @@ const StockPickSchema = new Schema({
     signalClarity: { type: Number, default: 0 },
     signals: { type: [IndicatorSignalSchema], default: [] },
     updatedAt: { type: Date, default: Date.now },
+    // Enhanced fields
+    volumeConfirmed: { type: Boolean, default: false },
+    indicatorVotes: {
+        bullish: { type: Number, default: 0 },
+        bearish: { type: Number, default: 0 },
+        neutral: { type: Number, default: 0 },
+    },
+    signalAge: { type: Number, default: 1 },
+    signalStrength: { type: String, enum: ['weak', 'moderate', 'strong'], default: 'weak' },
 });
 
 const DailyTopStocksSchema = new Schema({
@@ -66,6 +95,17 @@ const DailyTopStocksSchema = new Schema({
     totalAnalyzed: { type: Number, required: true },
     totalScanned: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now },
+    // Enhanced metadata
+    passedPreFilter: { type: Number, default: 0 },
+    passedClarity: { type: Number, default: 0 },
+    passedQualityGates: { type: Number, default: 0 },
+    avgConfidence: { type: Number, default: 0 },
+    scanDuration: { type: Number, default: 0 },
+    signalPersistence: {
+        age3: { type: Number, default: 0 },
+        age2: { type: Number, default: 0 },
+        age1: { type: Number, default: 0 },
+    },
 });
 
 // TTL index: auto-delete documents older than 7 days

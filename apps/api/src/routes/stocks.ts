@@ -1,5 +1,5 @@
 /**
- * Stocks API Routes
+ * Stocks API Routes (Enhanced)
  * Endpoints for fetching top stocks screened from NIFTY 100
  */
 
@@ -18,11 +18,13 @@ router.get('/top-10', async (req: Request, res: Response) => {
         console.log('📊 GET /api/stocks/top-10');
 
         let stocks = await getTodayTopStocks(false);
+        let isFallback = false;
 
         // Fallback to yesterday if today's analysis failed
         if (stocks.length === 0) {
             console.log('⚠️ No stocks for today, falling back to yesterday');
             stocks = await getYesterdayTopStocks();
+            isFallback = true;
         }
 
         // If still empty, return error
@@ -33,12 +35,30 @@ router.get('/top-10', async (req: Request, res: Response) => {
             });
         }
 
+        const avgConfidence = Math.round(
+            stocks.reduce((sum, s) => sum + s.confidence, 0) / stocks.length
+        );
+
         res.json({
             success: true,
             stocks,
             count: stocks.length,
             totalScanned: NIFTY_100.length,
             updatedAt: stocks[0]?.updatedAt || new Date(),
+            metadata: {
+                cached: true,
+                isFallback,
+                avgConfidence,
+                signalPersistence: {
+                    age3: stocks.filter(s => s.signalAge === 3).length,
+                    age2: stocks.filter(s => s.signalAge === 2).length,
+                    age1: stocks.filter(s => s.signalAge === 1).length,
+                },
+                directionSplit: {
+                    bullish: stocks.filter(s => s.direction === 'bullish').length,
+                    bearish: stocks.filter(s => s.direction === 'bearish').length,
+                },
+            },
         });
     } catch (error: any) {
         console.error('❌ Error fetching top stocks:', error);
@@ -56,6 +76,7 @@ router.get('/top-10', async (req: Request, res: Response) => {
 router.post('/top-10/refresh', async (req: Request, res: Response) => {
     try {
         console.log('🔄 POST /api/stocks/top-10/refresh — Screening', NIFTY_100.length, 'stocks...');
+        const startTime = Date.now();
 
         const stocks = await getTodayTopStocks(true);
 
@@ -66,6 +87,11 @@ router.post('/top-10/refresh', async (req: Request, res: Response) => {
             });
         }
 
+        const scanDuration = ((Date.now() - startTime) / 1000).toFixed(1);
+        const avgConfidence = Math.round(
+            stocks.reduce((sum, s) => sum + s.confidence, 0) / stocks.length
+        );
+
         res.json({
             success: true,
             stocks,
@@ -73,6 +99,20 @@ router.post('/top-10/refresh', async (req: Request, res: Response) => {
             totalScanned: NIFTY_100.length,
             updatedAt: new Date(),
             message: `Screened ${NIFTY_100.length} stocks → selected top ${stocks.length}`,
+            metadata: {
+                cached: false,
+                scanDuration: `${scanDuration}s`,
+                avgConfidence,
+                signalPersistence: {
+                    age3: stocks.filter(s => s.signalAge === 3).length,
+                    age2: stocks.filter(s => s.signalAge === 2).length,
+                    age1: stocks.filter(s => s.signalAge === 1).length,
+                },
+                directionSplit: {
+                    bullish: stocks.filter(s => s.direction === 'bullish').length,
+                    bearish: stocks.filter(s => s.direction === 'bearish').length,
+                },
+            },
         });
     } catch (error: any) {
         console.error('❌ Error refreshing top stocks:', error);
