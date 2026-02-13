@@ -13,6 +13,7 @@ import { watchlistRouter } from './routes/watchlist';
 import { analyticsRouter } from './routes/analytics';
 import { backtestRouter } from './routes/backtest';
 import stocksRouter from './routes/stocks';
+import { commodityRouter } from './routes/commodity';
 
 // Load environment variables
 dotenv.config();
@@ -65,6 +66,7 @@ app.use('/api/watchlist', watchlistRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/backtest', backtestRouter);
 app.use('/api/stocks', stocksRouter);
+app.use('/api/analyze/commodity', commodityRouter);
 
 /**
  * Start Server
@@ -82,7 +84,7 @@ const start = async () => {
 
         app.listen(PORT, () => {
             console.log(`🚀 API Server running on http://localhost:${PORT}`);
-            console.log(`📡 Endpoints active: /api/analyze, /api/trade, /api/watchlist, /api/analytics, /api/backtest`);
+            console.log(`📡 Endpoints active: /api/analyze, /api/analyze/commodity, /api/trade, /api/watchlist, /api/analytics, /api/backtest`);
         });
     } catch (error) {
         console.error('❌ Critical startup error:', error);

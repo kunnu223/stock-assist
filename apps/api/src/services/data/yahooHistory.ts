@@ -25,12 +25,15 @@ const MAPPINGS: Record<string, string> = {
     'BAJFINANCE': 'BAJFINANCE.NS'
 };
 
-/** Convert symbol to NSE format */
+/** Convert symbol to NSE format (skip for futures/intl symbols) */
 const toNSE = (symbol: string): string => {
     let s = symbol.toUpperCase().trim();
 
     // Check exact mapping first
     if (MAPPINGS[s]) return MAPPINGS[s];
+
+    // Futures symbols (GC=F, SI=F, DX-Y.NYB) — pass through unchanged
+    if (s.includes('=') || s.includes('-')) return s;
 
     // Remove spaces if it looks like a multi-word symbol (heuristic for Indian stocks)
     if (!s.includes('.') && s.includes(' ')) {
@@ -42,6 +45,7 @@ const toNSE = (symbol: string): string => {
     if (s.endsWith('.NS') || s.endsWith('.BO') || s.includes(':')) return s;
     return `${s}.NS`;
 };
+
 
 
 import yahooFinance from '../../config/yahoo';

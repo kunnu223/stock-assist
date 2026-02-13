@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star, Menu, X, Gem } from 'lucide-react';
 import { WatchlistPanel } from '../dashboard/WatchlistPanel';
 import { useWatchlist } from '@/context/WatchlistContext';
 
@@ -27,6 +27,7 @@ export function Navbar() {
                         <div className="hidden md:flex items-center gap-1">
                             <NavLink href="/" icon={<LayoutDashboard size={18} />} label="Dashboard" />
                             <NavLink href="/analyze" icon={<Search size={18} />} label="Scanner" />
+                            <NavLink href="/commodity" icon={<Gem size={18} />} label="Commodity" />
                             <NavLink href="/history" icon={<History size={18} />} label="History" />
                             <NavLink href="/journal" icon={<BookOpen size={18} />} label="Journal" />
                         </div>
@@ -72,6 +73,7 @@ export function Navbar() {
                         <div className="p-4 flex flex-col gap-2">
                             <NavLink href="/" icon={<LayoutDashboard size={18} />} label="Dashboard" onClick={() => setIsMobileMenuOpen(false)} />
                             <NavLink href="/analyze" icon={<Search size={18} />} label="Scanner" onClick={() => setIsMobileMenuOpen(false)} />
+                            <NavLink href="/commodity" icon={<Gem size={18} />} label="Commodity" onClick={() => setIsMobileMenuOpen(false)} />
                             <NavLink href="/history" icon={<History size={18} />} label="History" onClick={() => setIsMobileMenuOpen(false)} />
                             <NavLink href="/journal" icon={<BookOpen size={18} />} label="Journal" onClick={() => setIsMobileMenuOpen(false)} />
                             <div className="h-px bg-border my-2" />
