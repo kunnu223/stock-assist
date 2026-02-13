@@ -46,44 +46,44 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
             {/* ── Summary Header ── */}
-            <div className="premium-card rounded-xl p-8 bg-zinc-950/50 border-border">
+            <div className="premium-card rounded-xl p-4 sm:p-6 lg:p-8 bg-zinc-950/50 border-border">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     {/* Left: Price + Direction */}
-                    <div className="flex items-center gap-6">
-                        <div>
-                            <div className="flex items-center gap-3 mb-1">
-                                <h2 className="text-3xl font-bold text-foreground tracking-tight">{data.name}</h2>
-                                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${getRecColor(data.recommendation)}`}>
-                                    {data.recommendation === 'BUY' ? <ArrowUpRight size={12} /> : data.recommendation === 'SELL' ? <ArrowDownRight size={12} /> : <Minus size={12} />}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+                        <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
+                                <h2 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">{data.name}</h2>
+                                <span className={`inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider border ${getRecColor(data.recommendation)}`}>
+                                    {data.recommendation === 'BUY' ? <ArrowUpRight size={10} /> : data.recommendation === 'SELL' ? <ArrowDownRight size={10} /> : <Minus size={10} />}
                                     {data.recommendation}
                                 </span>
                             </div>
-                            <div className="flex items-baseline gap-4">
-                                <span className="text-4xl font-bold text-foreground">{curr}{isINR ? Math.round(data.currentPrice).toLocaleString('en-IN') : data.currentPrice.toFixed(2)}</span>
-                                <span className={`text-lg font-bold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            <div className="flex flex-wrap items-baseline gap-3 sm:gap-4">
+                                <span className="text-3xl sm:text-4xl font-bold text-foreground">{curr}{isINR ? Math.round(data.currentPrice).toLocaleString('en-IN') : data.currentPrice.toFixed(2)}</span>
+                                <span className={`text-base sm:text-lg font-bold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
                                     {isPositive ? '+' : ''}{data.changePercent.toFixed(2)}%
                                 </span>
                             </div>
-                            <div className="flex items-center gap-2 mt-2">
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${isINR ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-blue-400 bg-blue-500/10 border-blue-500/20'}`}>
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <span className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-wider border ${isINR ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-blue-400 bg-blue-500/10 border-blue-500/20'}`}>
                                     {exchangeLabel}
                                 </span>
-                                {exchangeUnit && <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">{exchangeUnit}</span>}
-                                {usdInr > 0 && <span className="text-[9px] text-muted-foreground font-bold">• USD/INR: ₹{usdInr.toFixed(2)}</span>}
+                                {exchangeUnit && <span className="text-[8px] sm:text-[9px] text-muted-foreground font-bold uppercase tracking-widest">{exchangeUnit}</span>}
+                                {usdInr > 0 && <span className="text-[8px] sm:text-[9px] text-muted-foreground font-bold">• USD/INR: ₹{usdInr.toFixed(2)}</span>}
                             </div>
-                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">
-                                {data.category} futures • {data.metadata?.aiModel || 'AI'} analysis
+                            <p className="text-[9px] sm:text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">
+                                {data.category} futures • {data.metadata?.aiModel || 'Smart'} analysis
                             </p>
                         </div>
                     </div>
 
                     {/* Right: Confidence + Direction */}
-                    <div className="flex items-center gap-8">
+                    <div className="flex items-center gap-4 sm:gap-6 lg:gap-8 justify-center lg:justify-end">
                         {/* Confidence Ring */}
-                        <div className="relative w-24 h-24">
-                            <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24">
+                            <svg className="w-20 h-20 sm:w-24 sm:h-24 -rotate-90" viewBox="0 0 100 100">
                                 <circle cx="50" cy="50" r="42" stroke="currentColor" className="text-zinc-800" strokeWidth="6" fill="none" />
                                 <circle
                                     cx="50" cy="50" r="42"
@@ -97,15 +97,15 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                                 />
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <span className={`text-2xl font-black ${getConfColor(data.confidence)}`}>{data.confidence}</span>
-                                <span className="text-[8px] text-muted-foreground font-bold uppercase tracking-widest">CONF</span>
+                                <span className={`text-xl sm:text-2xl font-black ${getConfColor(data.confidence)}`}>{data.confidence}</span>
+                                <span className="text-[7px] sm:text-[8px] text-muted-foreground font-bold uppercase tracking-widest">CONF</span>
                             </div>
                         </div>
 
                         {/* Direction Badge */}
-                        <div className={`flex flex-col items-center gap-1 px-6 py-3 rounded-xl border ${isBullish ? 'bg-emerald-500/10 border-emerald-500/20' : data.direction === 'BEARISH' ? 'bg-rose-500/10 border-rose-500/20' : 'bg-zinc-800/50 border-zinc-700'}`}>
-                            {isBullish ? <TrendingUp size={28} className="text-emerald-400" /> : data.direction === 'BEARISH' ? <TrendingDown size={28} className="text-rose-400" /> : <Minus size={28} className="text-zinc-400" />}
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${isBullish ? 'text-emerald-400' : data.direction === 'BEARISH' ? 'text-rose-400' : 'text-zinc-400'}`}>
+                        <div className={`flex flex-col items-center gap-1 px-4 sm:px-6 py-2 sm:py-3 rounded-xl border ${isBullish ? 'bg-emerald-500/10 border-emerald-500/20' : data.direction === 'BEARISH' ? 'bg-rose-500/10 border-rose-500/20' : 'bg-zinc-800/50 border-zinc-700'}`}>
+                            {isBullish ? <TrendingUp size={24} className="text-emerald-400 sm:w-7 sm:h-7" /> : data.direction === 'BEARISH' ? <TrendingDown size={24} className="text-rose-400 sm:w-7 sm:h-7" /> : <Minus size={24} className="text-zinc-400 sm:w-7 sm:h-7" />}
+                            <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${isBullish ? 'text-emerald-400' : data.direction === 'BEARISH' ? 'text-rose-400' : 'text-zinc-400'}`}>
                                 {data.direction}
                             </span>
                         </div>
@@ -114,7 +114,7 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
 
                 {/* Summary text */}
                 {data.summary && (
-                    <p className="mt-6 text-sm text-muted-foreground font-medium leading-relaxed border-t border-border pt-6 italic">
+                    <p className="mt-4 sm:mt-6 text-xs sm:text-sm text-muted-foreground font-medium leading-relaxed border-t border-border pt-4 sm:pt-6 italic">
                         &quot;{data.summary}&quot;
                     </p>
                 )}
@@ -125,22 +125,22 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                 {/* ── Multi-Horizon Plan ── */}
                 <div className="premium-card rounded-xl bg-zinc-950/50 border-border lg:col-span-2">
                     <div className="p-6 border-b border-border">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
                                     <Target size={16} className="text-amber-400" />
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Multi-Horizon Plan</h3>
-                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">AI-Generated Trading Actions</p>
+                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Intelligent Trading Actions</p>
                                 </div>
                             </div>
-                            <div className="flex gap-1 bg-zinc-900 rounded-lg p-1">
+                            <div className="flex gap-1 bg-zinc-900 rounded-lg p-1 overflow-x-auto no-scrollbar">
                                 {(['today', 'tomorrow', 'nextWeek'] as const).map((h) => (
                                     <button
                                         key={h}
                                         onClick={() => setHorizon(h)}
-                                        className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${horizon === h
+                                        className={`flex-1 sm:flex-none whitespace-nowrap px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest transition-all ${horizon === h
                                             ? 'bg-amber-500/20 text-amber-400 shadow-sm'
                                             : 'text-muted-foreground hover:text-foreground'
                                             }`}

@@ -148,8 +148,8 @@ export default function Dashboard() {
                                             <h3 className="text-xl font-bold text-foreground tracking-tight uppercase">{stock.symbol}</h3>
                                             {/* Direction Badge */}
                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${stock.direction === 'bullish'
-                                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-                                                    : 'bg-rose-500/15 text-rose-400 border border-rose-500/20'
+                                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                                                : 'bg-rose-500/15 text-rose-400 border border-rose-500/20'
                                                 }`}>
                                                 {stock.direction === 'bullish' ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
                                                 {stock.direction}
@@ -162,63 +162,7 @@ export default function Dashboard() {
                                     </div>
                                 </div>
 
-                                <div className="text-3xl font-bold text-foreground mb-6">₹{stock.price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-
-                                {/* Signal Clarity & Confidence Bars */}
-                                <div className="space-y-3 mb-5">
-                                    {/* Signal Clarity */}
-                                    <div>
-                                        <div className="flex justify-between items-center px-1 mb-1">
-                                            <span className="text-[9px] text-muted-foreground font-black uppercase tracking-widest">Signal Clarity</span>
-                                            <span className="text-[11px] font-black text-amber-400">{stock.signalClarity || 0}%</span>
-                                        </div>
-                                        <div className="w-full bg-zinc-900 rounded-full h-1 overflow-hidden">
-                                            <div
-                                                className="bg-amber-400 h-full rounded-full transition-all duration-1000"
-                                                style={{ width: `${stock.signalClarity || 0}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-                                    {/* Confidence */}
-                                    <div>
-                                        <div className="flex justify-between items-center px-1 mb-1">
-                                            <span className="text-[9px] text-muted-foreground font-black uppercase tracking-widest">Confidence</span>
-                                            <span className="text-[11px] font-black text-primary-500">{stock.confidence}%</span>
-                                        </div>
-                                        <div className="w-full bg-zinc-900 rounded-full h-1 overflow-hidden">
-                                            <div
-                                                className="bg-primary-500 h-full rounded-full transition-all duration-1000"
-                                                style={{ width: `${stock.confidence}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Indicator Signals Grid */}
-                                {stock.signals && stock.signals.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 mb-5">
-                                        {stock.signals.map((signal) => (
-                                            <span
-                                                key={signal.name}
-                                                title={signal.detail}
-                                                className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-sm border ${signal.direction === 'bullish'
-                                                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                                                        : signal.direction === 'bearish'
-                                                            ? 'bg-rose-500/10 text-rose-500 border-rose-500/20'
-                                                            : 'bg-zinc-800/50 text-zinc-500 border-zinc-700/30'
-                                                    }`}
-                                            >
-                                                {signal.direction === 'bullish' ? '↑' : signal.direction === 'bearish' ? '↓' : '—'} {signal.name}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-
-                                <div className="mt-auto pt-4 border-t border-border">
-                                    <p className="text-[11px] text-muted-foreground font-medium leading-relaxed italic line-clamp-2">
-                                        &quot;{stock.reason}&quot;
-                                    </p>
-                                </div>
+                                <div className="text-3xl font-bold text-foreground">₹{stock.price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                             </div>
                         ))
                     )}
