@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Activity, Terminal, Shield } from 'lucide-react';
 import { AnalysisDetail } from '@/components/analysis/AnalysisDetail';
 
@@ -9,14 +9,30 @@ export default function AnalyzePage() {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<any | null>(null);
 
-    const handleAnalyze = async () => {
-        if (!symbol) return;
+    // Auto-scan on mount if query params present
+    useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const querySymbol = searchParams.get('symbol');
+        const auto = searchParams.get('auto');
+
+        if (querySymbol) {
+            setSymbol(querySymbol);
+            if (auto === 'true') {
+                executeScan(querySymbol);
+            }
+        }
+    }, []);
+
+    const executeScan = async (sym: string) => {
+        if (!sym) return;
         setLoading(true);
+        setData(null);
+
         try {
             const res = await fetch('/api/analyze/single', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ symbol }),
+                body: JSON.stringify({ symbol: sym }),
             });
             const response = await res.json();
             if (response.success) {
@@ -28,16 +44,18 @@ export default function AnalyzePage() {
         setLoading(false);
     };
 
+    const handleAnalyze = () => executeScan(symbol);
+
     return (
-        <div className="space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-10">
+        <div className="space-y-6 md:space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-4 md:pt-10">
             {/* Header section */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-10">
-                <div className="space-y-4">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-6 md:pb-10">
+                <div className="space-y-3 md:space-y-4">
                     <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-500 text-[10px] font-black uppercase tracking-widest">
                         <Terminal size={12} />
                         <span>Real-Time Engine</span>
                     </div>
-                    <h1 className="text-5xl font-bold text-foreground tracking-tight">Intelligence <span className="text-primary-500">Scanner</span></h1>
+                    <h1 className="text-3xl md:text-5xl font-bold text-foreground tracking-tight">Intelligence <span className="text-primary-500">Scanner</span></h1>
                     <p className="text-muted-foreground max-w-xl font-medium">Deploy advanced AI models to scan market patterns, sentiment, and fundamental data in seconds.</p>
                 </div>
                 <div className="flex items-center gap-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">

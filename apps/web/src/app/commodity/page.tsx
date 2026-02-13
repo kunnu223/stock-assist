@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Activity, Zap, Shield, Gem, Flame, Droplets, Cpu, CircleDot, Globe, MapPin, Building2 } from 'lucide-react';
 import { CommodityResult } from '@/components/commodity/CommodityResult';
 
@@ -72,11 +72,17 @@ export default function CommodityPage() {
     const [data, setData] = useState<any | null>(null);
     const [error, setError] = useState<string | null>(null);
 
+    const exchangeSectionRef = useRef<HTMLDivElement>(null);
+
     const handleCommoditySelect = (commodityKey: string) => {
         setSelectedCommodity(commodityKey);
         setSelectedExchange(null);
         setData(null);
         setError(null);
+        // Scroll to exchange selector after a short delay to allow render
+        setTimeout(() => {
+            exchangeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
     };
 
     const handleExchangeSelect = async (exchangeKey: string) => {
@@ -109,22 +115,22 @@ export default function CommodityPage() {
     const activeExchange = EXCHANGES.find(e => e.key === selectedExchange);
 
     return (
-        <div className="space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-10">
+        <div className="space-y-6 md:space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-4 md:pt-10">
             {/* Hero Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-10">
-                <div className="space-y-4">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-6 md:pb-10">
+                <div className="space-y-3 md:space-y-4">
                     <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-widest">
                         <Zap size={12} />
-                        <span>Commodity Intelligence</span>
+                        <span>Strategic Outlook</span>
                     </div>
-                    <h1 className="text-5xl font-bold text-foreground tracking-tight">
+                    <h1 className="text-3xl md:text-5xl font-bold text-foreground tracking-tight">
                         Commodity <span className="text-amber-500">Analysis</span>
                     </h1>
-                    <p className="text-muted-foreground max-w-xl font-medium">
-                        Multi-horizon trading plans with crash detection, seasonality patterns, and macro context — powered by AI. Supports COMEX 🇺🇸, MCX 🇮🇳, and Spot/Hazar 🏪 pricing.
+                    <p className="text-muted-foreground max-w-xl font-medium text-sm md:text-base">
+                        Let's see what the market says. Will it go UP or DOWN?
                     </p>
                 </div>
-                <div className="flex items-center gap-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                <div className="hidden md:flex items-center gap-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">
                     <div className="flex items-center gap-2">
                         <Shield size={14} className="text-amber-500" />
                         <span>Multi-Exchange</span>
@@ -188,7 +194,7 @@ export default function CommodityPage() {
 
             {/* ── Step 2: Exchange Selector (shown after commodity selection) ── */}
             {selectedCommodity && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div ref={exchangeSectionRef} className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
                         <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[9px] font-black">2</span>
                         Select Exchange for <span className={activeCommodity?.color}>{activeCommodity?.name}</span>

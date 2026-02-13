@@ -74,19 +74,23 @@ export default function Dashboard() {
     };
 
     return (
-        <div className="space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-10">
+        <div className="space-y-6 md:space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-4 md:pt-10">
             {/* Hero Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-10">
-                <div className="space-y-4">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-6 md:pb-10">
+                <div className="space-y-3 md:space-y-4">
                     <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-500 text-[10px] font-black uppercase tracking-widest">
                         <BarChart3 size={12} />
                         <span>Signal Clarity Screener</span>
                     </div>
-                    <h1 className="text-5xl font-bold text-foreground tracking-tight italic uppercase">Top Tier <span className="text-primary-500">Analytics</span></h1>
-                    <p className="text-muted-foreground max-w-xl font-medium">
-                        Code-level screening of {totalScanned || 100} NSE stocks using multi-indicator signal clarity.
+                    <h1 className="text-3xl md:text-5xl font-bold text-foreground tracking-tight italic uppercase">
+                        <span className="md:hidden">Stock <span className="text-primary-500">Picks</span></span>
+                        <span className="hidden md:inline">Top Tier <span className="text-primary-500">Analytics</span></span>
+                    </h1>
+                    <p className="text-muted-foreground max-w-xl font-medium text-sm md:text-base">
+                        <span className="md:hidden">Screening 100 NSE stocks for high-clarity setups.</span>
+                        <span className="hidden md:inline">Code-level screening of {totalScanned || 100} NSE stocks using multi-indicator signal clarity.</span>
                         {totalScanned > 0 && topStocks.length > 0 && (
-                            <span className="text-primary-500 font-bold"> Filtered {totalScanned} → {topStocks.length} high-clarity setups.</span>
+                            <span className="block mt-1 md:inline md:mt-0 text-primary-500 font-bold"> Filtered {totalScanned} → {topStocks.length} <span className="hidden md:inline">high-clarity setups</span><span className="md:hidden">picks</span>.</span>
                         )}
                     </p>
                 </div>
@@ -94,10 +98,11 @@ export default function Dashboard() {
                     <button
                         onClick={() => fetchTopStocks(true)}
                         disabled={refreshing}
-                        className="flex items-center gap-2 px-6 py-4 bg-foreground text-background hover:bg-zinc-200 rounded-lg transition-all font-black uppercase tracking-widest text-[10px] disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2 md:px-6 md:py-3 bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-all font-bold uppercase tracking-wider text-[10px] disabled:opacity-50 backdrop-blur-sm"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                        {refreshing ? 'Screening 100 Stocks...' : 'Re-Screen All Stocks'}
+                        <span className="md:hidden">{refreshing ? 'Scanning...' : 'Refresh'}</span>
+                        <span className="hidden md:inline">{refreshing ? 'Screening 100 Stocks...' : 'Re-Screen All Stocks'}</span>
                     </button>
                     {updatedAt && (
                         <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
@@ -137,7 +142,11 @@ export default function Dashboard() {
                         ))
                     ) : (
                         topStocks.map((stock, index) => (
-                            <div key={stock.symbol} className="premium-card relative p-8 rounded-xl bg-zinc-950/50 flex flex-col h-full border-border hover:border-zinc-700 transition-all group">
+                            <div
+                                key={stock.symbol}
+                                onClick={() => window.location.href = `/analyze?symbol=${stock.symbol}&auto=true`}
+                                className="premium-card relative p-8 rounded-xl bg-zinc-950/50 flex flex-col h-full border-border hover:border-zinc-700 transition-all group cursor-pointer hover:shadow-lg hover:shadow-primary-500/5"
+                            >
                                 <div className="absolute top-0 right-0 p-4">
                                     <span className="text-[40px] font-black text-foreground/5 italic leading-none select-none">#{index + 1}</span>
                                 </div>
@@ -145,7 +154,7 @@ export default function Dashboard() {
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
-                                            <h3 className="text-xl font-bold text-foreground tracking-tight uppercase">{stock.symbol}</h3>
+                                            <h3 className="text-xl font-bold text-foreground tracking-tight uppercase group-hover:text-primary-500 transition-colors">{stock.symbol}</h3>
                                             {/* Direction Badge */}
                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${stock.direction === 'bullish'
                                                 ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
