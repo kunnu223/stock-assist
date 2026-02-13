@@ -65,14 +65,19 @@ const EXCHANGES: ExchangeOption[] = [
     },
 ];
 
+import { useLanguage } from '@/context/LanguageContext';
+import { translations } from '@/utils/translations';
+
 export default function CommodityPage() {
     const [selectedCommodity, setSelectedCommodity] = useState<string | null>(null);
     const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<any | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const { t, language } = useLanguage();
 
     const exchangeSectionRef = useRef<HTMLDivElement>(null);
+    const resultSectionRef = useRef<HTMLDivElement>(null);
 
     const handleCommoditySelect = (commodityKey: string) => {
         setSelectedCommodity(commodityKey);
@@ -96,13 +101,17 @@ export default function CommodityPage() {
             const res = await fetch('/api/analyze/commodity', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ symbol: selectedCommodity, exchange: exchangeKey }),
+                body: JSON.stringify({ symbol: selectedCommodity, exchange: exchangeKey, language }),
             });
             const response = await res.json();
             if (response.success) {
                 setData(response.data);
+                // Scroll to results
+                setTimeout(() => {
+                    resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
             } else {
-                setError(response.error || 'Analysis failed');
+                setError(response.error || t('common.error'));
             }
         } catch (err) {
             console.error('Commodity analysis failed:', err);
@@ -117,17 +126,18 @@ export default function CommodityPage() {
     return (
         <div className="space-y-6 md:space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-4 md:pt-10">
             {/* Hero Header */}
+            {/* Hero Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-6 md:pb-10">
                 <div className="space-y-3 md:space-y-4">
                     <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-widest">
                         <Zap size={12} />
-                        <span>Strategic Outlook</span>
+                        <span>{t('commodity.badge')}</span>
                     </div>
                     <h1 className="text-3xl md:text-5xl font-bold text-foreground tracking-tight">
-                        Commodity <span className="text-amber-500">Analysis</span>
+                        {t('commodity.pageTitle')} <span className="text-amber-500">{t('commodity.pageSubtitle')}</span>
                     </h1>
                     <p className="text-muted-foreground max-w-xl font-medium text-sm md:text-base">
-                        Let's see what the market says. Will it go UP or DOWN?
+                        {t('commodity.description')}
                     </p>
                 </div>
                 <div className="hidden md:flex items-center gap-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">
@@ -144,11 +154,14 @@ export default function CommodityPage() {
             <div className="space-y-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[9px] font-black">1</span>
-                    Select Commodity
+                    {t('commodity.step1')}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                     {COMMODITIES.map((commodity) => {
                         const isSelected = selectedCommodity === commodity.key;
+                        const name = language === 'hi'
+                            ? (translations.commodity.items as any)[commodity.key]?.hi || commodity.name
+                            : commodity.name;
 
                         return (
                             <button
@@ -180,7 +193,7 @@ export default function CommodityPage() {
                                 </div>
 
                                 <span className={`text-sm font-bold tracking-tight ${isSelected ? commodity.color : 'text-foreground'}`}>
-                                    {commodity.name}
+                                    {name}
                                 </span>
 
                                 {isSelected && (
@@ -197,12 +210,17 @@ export default function CommodityPage() {
                 <div ref={exchangeSectionRef} className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
                         <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[9px] font-black">2</span>
-                        Select Exchange for <span className={activeCommodity?.color}>{activeCommodity?.name}</span>
+                        {t('commodity.step2')} <span className={activeCommodity?.color}>
+                            {activeCommodity ? (language === 'hi' ? (translations.commodity.items as any)[activeCommodity.key]?.hi || activeCommodity.name : activeCommodity.name) : ''}
+                        </span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {EXCHANGES.map((exchange) => {
                             const isSelected = selectedExchange === exchange.key;
                             const isLoading = loading && isSelected;
+                            const exchangeTrans = (translations.commodity.exchanges as any)[exchange.key];
+                            const label = language === 'hi' ? exchangeTrans?.label.hi || exchange.label : exchange.label;
+                            const desc = language === 'hi' ? exchangeTrans?.desc.hi || exchange.description : exchange.description;
 
                             return (
                                 <button
@@ -236,15 +254,15 @@ export default function CommodityPage() {
                                     <div className="text-left flex-1">
                                         <div className="flex items-center gap-2">
                                             <span className={`text-sm font-bold ${isSelected ? exchange.color : 'text-foreground'}`}>
-                                                {exchange.label}
+                                                {label}
                                             </span>
                                             {isLoading && (
                                                 <span className="text-[9px] font-bold text-muted-foreground animate-pulse uppercase tracking-widest">
-                                                    Analyzing...
+                                                    {t('common.loading')}
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{exchange.description}</p>
+                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{desc}</p>
                                     </div>
 
                                     {isSelected && !isLoading && (
@@ -283,7 +301,7 @@ export default function CommodityPage() {
 
             {/* Results */}
             {data && !loading && (
-                <div className="animate-in fade-in slide-in-from-bottom-6 duration-1000">
+                <div ref={resultSectionRef} className="animate-in fade-in slide-in-from-bottom-6 duration-1000">
                     <CommodityResult data={data} accentColor={activeCommodity?.color || 'text-amber-400'} />
                 </div>
             )}
@@ -295,9 +313,9 @@ export default function CommodityPage() {
                         <Gem className="text-amber-600/40" size={40} />
                     </div>
                     <div className="space-y-2">
-                        <h3 className="text-2xl font-bold text-foreground tracking-tight uppercase">Select a Commodity</h3>
+                        <h3 className="text-2xl font-bold text-foreground tracking-tight uppercase">{t('commodity.emptyState.title')}</h3>
                         <p className="text-muted-foreground font-medium max-w-sm mx-auto">
-                            Choose from Gold, Silver, Crude Oil, Natural Gas, or Copper, then select your exchange.
+                            {t('commodity.emptyState.desc')}
                         </p>
                     </div>
                 </div>
@@ -312,7 +330,9 @@ export default function CommodityPage() {
                         <div className="w-8 h-px bg-border" />
                     </div>
                     <p className="text-muted-foreground font-medium text-sm">
-                        Select an exchange above to analyze <span className={activeCommodity?.color + ' font-bold'}>{activeCommodity?.name}</span>
+                        {t('commodity.waitingForExchange')} <span className={activeCommodity?.color + ' font-bold'}>
+                            {activeCommodity ? (language === 'hi' ? (translations.commodity.items as any)[activeCommodity.key]?.hi || activeCommodity.name : activeCommodity.name) : ''}
+                        </span>
                     </p>
                 </div>
             )}

@@ -22,19 +22,27 @@ export interface CommodityPromptInput {
     confidence: CommodityConfidenceResult;
     crash: CrashDetectionResult;
     newsHeadlines: string[];
+    language?: string;
 }
 
 /**
  * Build the commodity analysis prompt
  */
 export function buildCommodityPrompt(input: CommodityPromptInput): string {
-    const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines } = input;
+    const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines, language } = input;
+
+    const langInstruction = language === 'hi'
+        ? 'IMPORTANT: Provide the response in HINDI language (Devanagari script) for all text fields (summary, reasoning, action, etc). Keep JSON keys in English.'
+        : '';
 
     return `You are an expert commodity futures analyst. Analyze ${commodity.name} (${commodity.symbol}) and provide a structured multi-horizon trading plan.
+
+${langInstruction}
 
 ## CURRENT MARKET DATA
 - **Price**: $${commodity.currentPrice.toFixed(2)} (${commodity.changePercent >= 0 ? '+' : ''}${commodity.changePercent.toFixed(2)}%)
 - **Day Range**: $${commodity.dayLow.toFixed(2)} - $${commodity.dayHigh.toFixed(2)}
+- **Volume**: ${commodity.volume.toLocaleString()} contracts
 - **Volume**: ${commodity.volume.toLocaleString()} contracts
 
 ## USD INDEX (DXY)

@@ -15,37 +15,44 @@ export type { EnhancedNewsAnalysis, FundamentalData, ConfidenceResult };
 import type { MultiTimeframeAnalysis } from '../analysis/technicalAnalysis';
 
 export interface EnhancedPromptInput {
-  stock: StockData;
-  indicators: TechnicalIndicators;
-  patterns: PatternAnalysis;
-  news: EnhancedNewsAnalysis;
-  fundamentals: FundamentalData;
-  technicalSummary: string;
-  confidenceResult: ConfidenceResult;
-  weeklyIndicators?: TechnicalIndicators;
-  monthlyIndicators?: TechnicalIndicators;
-  weeklyPatterns?: PatternAnalysis;
-  monthlyPatterns?: PatternAnalysis;
-  patternConfluence?: any;
-  ftConflict?: any;
-  sectorComparison?: any;
-  multiTimeframe?: MultiTimeframeAnalysis;
+   stock: StockData;
+   indicators: TechnicalIndicators;
+   patterns: PatternAnalysis;
+   news: EnhancedNewsAnalysis;
+   fundamentals: FundamentalData;
+   technicalSummary: string;
+   confidenceResult: ConfidenceResult;
+   weeklyIndicators?: TechnicalIndicators;
+   monthlyIndicators?: TechnicalIndicators;
+   weeklyPatterns?: PatternAnalysis;
+   monthlyPatterns?: PatternAnalysis;
+   patternConfluence?: any;
+   ftConflict?: any;
+   sectorComparison?: any;
+   multiTimeframe?: MultiTimeframeAnalysis;
+   language?: string;
 }
 
 /**
  * Build comprehensive enhanced analysis prompt
  */
 export const buildEnhancedPrompt = (input: EnhancedPromptInput): string => {
-  const { stock, indicators, patterns, news, fundamentals, confidenceResult, weeklyIndicators, monthlyIndicators, patternConfluence, ftConflict, sectorComparison, multiTimeframe } = input;
-  const { quote } = stock;
-  const { rsi, ma, macd } = indicators;
+   const { stock, indicators, patterns, news, fundamentals, confidenceResult, weeklyIndicators, monthlyIndicators, patternConfluence, ftConflict, sectorComparison, multiTimeframe, language } = input;
+   const { quote } = stock;
+   const { rsi, ma, macd } = indicators;
 
-  // Use multiTimeframe data if available, otherwise fallback to basic
-  const dailyBias = multiTimeframe?.timeframes['1D'].trend || 'neutral';
-  const weeklyBias = multiTimeframe?.timeframes['1W'].trend || 'neutral';
-  const monthlyBias = multiTimeframe?.timeframes['1M'].trend || 'neutral';
+   // Use multiTimeframe data if available, otherwise fallback to basic
+   const dailyBias = multiTimeframe?.timeframes['1D'].trend || 'neutral';
+   const weeklyBias = multiTimeframe?.timeframes['1W'].trend || 'neutral';
+   const monthlyBias = multiTimeframe?.timeframes['1M'].trend || 'neutral';
 
-  const prompt = `You are an expert stock analyst. Analyze ${quote.symbol}:
+   const langInstruction = language === 'hi'
+      ? 'IMPORTANT: Provide the response in HINDI language (Devanagari script) for all text fields (summary, reasoning, action, etc). Keep JSON keys in English.'
+      : '';
+
+   const prompt = `You are an expert stock analyst. Analyze ${quote.symbol}:
+
+${langInstruction}
 
 📊 CURRENT PRICE: ₹${quote.price}
 
@@ -149,5 +156,5 @@ DECISION RULES (MUST FOLLOW)
 
 Provide your analysis in the required JSON format with REALISTIC probabilities.`;
 
-  return prompt;
+   return prompt;
 };

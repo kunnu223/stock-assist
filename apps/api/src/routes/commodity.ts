@@ -56,7 +56,7 @@ commodityRouter.get('/exchanges/:symbol', (req: Request, res: Response) => {
 /** POST /commodity — Analyze a commodity on a specific exchange */
 commodityRouter.post('/', async (req: Request, res: Response) => {
     const startTime = Date.now();
-    const { symbol, exchange: rawExchange } = req.body;
+    const { symbol, exchange: rawExchange, language } = req.body;
 
     if (!symbol) {
         return res.status(400).json({
@@ -82,10 +82,10 @@ commodityRouter.post('/', async (req: Request, res: Response) => {
 
     try {
         console.log(`\n[API] ═══════════════════════════════════════`);
-        console.log(`[API] 🪙 POST /api/analyze/commodity — ${key} on ${exchange}`);
+        console.log(`[API] 🪙 POST /api/analyze/commodity — ${key} on ${exchange} (${language || 'en'})`);
         console.log(`[API] ═══════════════════════════════════════\n`);
 
-        const result = await analyzeCommodity(key, exchange);
+        const result = await analyzeCommodity(key, exchange, language);
 
         const elapsed = Date.now() - startTime;
         console.log(`[API] ✅ Commodity analysis complete: ${key} (${exchange}) in ${(elapsed / 1000).toFixed(1)}s`);

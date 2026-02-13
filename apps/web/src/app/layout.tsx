@@ -79,6 +79,8 @@ export const viewport: Viewport = {
     themeColor: '#f59e0b',
 };
 
+import { LanguageProvider } from '@/context/LanguageContext';
+
 export default function RootLayout({
     children,
 }: {
@@ -94,36 +96,38 @@ export default function RootLayout({
                 <meta name="apple-mobile-web-app-title" content="Stock Assist" />
             </head>
             <body className={`${inter.className} bg-background text-foreground min-h-screen selection:bg-primary-500/30`}>
-                <script
-                    type="application/ld+json"
-                    dangerouslySetInnerHTML={{
-                        __html: JSON.stringify({
-                            '@context': 'https://schema.org',
-                            '@type': 'SoftwareApplication',
-                            name: 'Stock Assist',
-                            applicationCategory: 'FinanceApplication',
-                            operatingSystem: 'Any',
-                            offers: {
-                                '@type': 'Offer',
-                                price: '0',
-                                priceCurrency: 'INR',
-                            },
-                            author: {
-                                '@type': 'Organization',
-                                name: 'Stock Assist Team',
-                                url: 'https://stock-assist.app',
-                            },
-                        }),
-                    }}
-                />
-                <WatchlistProvider>
-                    <Navbar />
-                    <main className="pt-20 sm:pt-24 pb-28 sm:pb-12 px-4 sm:px-6">
-                        {children}
-                    </main>
-                    <InstallPrompt />
-                    <BottomNav />
-                </WatchlistProvider>
+                <LanguageProvider>
+                    <script
+                        type="application/ld+json"
+                        dangerouslySetInnerHTML={{
+                            __html: JSON.stringify({
+                                '@context': 'https://schema.org',
+                                '@type': 'SoftwareApplication',
+                                name: 'Stock Assist',
+                                applicationCategory: 'FinanceApplication',
+                                operatingSystem: 'Any',
+                                offers: {
+                                    '@type': 'Offer',
+                                    price: '0',
+                                    priceCurrency: 'INR',
+                                },
+                                author: {
+                                    '@type': 'Organization',
+                                    name: 'Stock Assist Team',
+                                    url: 'https://stock-assist.app',
+                                },
+                            }),
+                        }}
+                    />
+                    <WatchlistProvider>
+                        <Navbar />
+                        <main className="pt-20 sm:pt-24 pb-28 sm:pb-12 px-4 sm:px-6">
+                            {children}
+                        </main>
+                        <InstallPrompt />
+                        <BottomNav />
+                    </WatchlistProvider>
+                </LanguageProvider>
 
                 {/* Service Worker Registration */}
                 <Script id="sw-register" strategy="afterInteractive">

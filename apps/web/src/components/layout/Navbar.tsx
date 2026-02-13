@@ -7,9 +7,16 @@ import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star,
 import { WatchlistPanel } from '../dashboard/WatchlistPanel';
 import { useWatchlist } from '@/context/WatchlistContext';
 
+import { useLanguage } from '@/context/LanguageContext';
+
 export function Navbar() {
     const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
     const { watchlist } = useWatchlist();
+    const { language, setLanguage, t } = useLanguage();
+
+    const toggleLanguage = () => {
+        setLanguage(language === 'en' ? 'hi' : 'en');
+    };
 
     return (
         <>
@@ -24,16 +31,22 @@ export function Navbar() {
                         </Link>
 
                         <div className="hidden md:flex items-center gap-1">
-                            <NavLink href="/" icon={<LayoutDashboard size={18} />} label="Dashboard" />
-                            <NavLink href="/analyze" icon={<Search size={18} />} label="Scanner" />
-                            <NavLink href="/commodity" icon={<Gem size={18} />} label="Commodity" />
-                            <NavLink href="/history" icon={<History size={18} />} label="History" />
-                            <NavLink href="/journal" icon={<BookOpen size={18} />} label="Journal" />
+                            <NavLink href="/" icon={<LayoutDashboard size={18} />} label={t('nav.dashboard')} />
+                            <NavLink href="/analyze" icon={<Search size={18} />} label={t('nav.scanner')} />
+                            <NavLink href="/commodity" icon={<Gem size={18} />} label={t('nav.commodity')} />
+                            <NavLink href="/history" icon={<History size={18} />} label={t('nav.history')} />
+                            <NavLink href="/journal" icon={<BookOpen size={18} />} label={t('nav.journal')} />
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2 md:gap-4">
                         <div className="flex items-center gap-1 md:gap-4">
+                            <button
+                                onClick={toggleLanguage}
+                                className="px-3 py-1.5 rounded-md border border-border bg-secondary/50 text-xs font-bold uppercase tracking-wider hover:bg-secondary transition-colors "
+                            >
+                                {language === 'en' ? 'हिन्दी' : 'ENGLISH'}
+                            </button>
                             <button
                                 onClick={() => setIsWatchlistOpen(true)}
                                 className="p-2 text-muted-foreground hover:text-amber-500 transition-colors relative"

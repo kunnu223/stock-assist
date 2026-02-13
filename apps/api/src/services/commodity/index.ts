@@ -195,8 +195,9 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
  * Main orchestrator: analyze a commodity
  * @param symbol - Commodity symbol (GOLD, SILVER, etc.)
  * @param exchange - Exchange variant: COMEX (default), MCX, SPOT
+ * @param language - Language code (en, hi)
  */
-export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COMEX'): Promise<CommodityAnalysisResult> {
+export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COMEX', language?: string): Promise<CommodityAnalysisResult> {
     const startTime = Date.now();
     const key = symbol.toUpperCase().replace(/\s+/g, '');
 
@@ -206,7 +207,7 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
 
     const exchangeInfo = getExchangeInfo(exchange, key);
     console.log(`\n[Commodity] ═══════════════════════════════════════`);
-    console.log(`[Commodity] 🪙 Analyzing ${COMMODITY_SYMBOLS[key].name} (${key}) on ${exchangeInfo.label}`);
+    console.log(`[Commodity] 🪙 Analyzing ${COMMODITY_SYMBOLS[key].name} (${key}) on ${exchangeInfo.label} (${language || 'en'})`);
     console.log(`[Commodity] ═══════════════════════════════════════\n`);
 
     // ── Stage 1: Parallel Data Fetch ──
@@ -269,6 +270,7 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         confidence,
         crash,
         newsHeadlines,
+        language,
     };
 
     const promptText = buildCommodityPrompt(promptInput);

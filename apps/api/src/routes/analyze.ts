@@ -113,14 +113,14 @@ analyzeRouter.get('/stocks', async (_req: Request, res: Response) => {
 
 /** POST /api/analyze/single - Enhanced single stock analysis */
 analyzeRouter.post('/single', async (req: Request, res: Response) => {
-    const { symbol } = req.body;
+    const { symbol, language } = req.body;
 
     if (!symbol) {
         return res.status(400).json({ success: false, error: 'Symbol required' });
     }
 
     const start = Date.now();
-    console.log(`[Analyze] 🚀 Enhanced analysis for: ${symbol}`);
+    console.log(`[Analyze] 🚀 Enhanced analysis for: ${symbol} (${language || 'en'})`);
 
     try {
         // Step 1+2: Parallel fetch of data (fixed: single getStockData call)
@@ -297,7 +297,7 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
 
         // NEW: Ensemble AI (Groq + Gemini in parallel)
         const ensembleResult = await analyzeWithEnsemble(
-            { stock, indicators: technicalAnalysis.indicators.daily, patterns: technicalAnalysis.patterns.daily, news: enhancedNews as any },
+            { stock, indicators: technicalAnalysis.indicators.daily, patterns: technicalAnalysis.patterns.daily, news: enhancedNews as any, language },
             adjustedConfidence
         );
         let aiAnalysis: any = ensembleResult?.analysis || null;

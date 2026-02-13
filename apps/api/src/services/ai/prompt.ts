@@ -13,13 +13,18 @@ export interface PromptInput {
   news: NewsAnalysis;
   weeklyIndicators?: TechnicalIndicators;
   monthlyIndicators?: TechnicalIndicators;
+  language?: string;
 }
 
 /** Build enhanced accuracy-focused analysis prompt */
 export const buildPrompt = (input: PromptInput): string => {
-  const { stock, indicators, patterns, news } = input;
+  const { stock, indicators, patterns, news, language } = input;
   const { quote } = stock;
   const { rsi, ma, sr, volume } = indicators;
+
+  const langInstruction = language === 'hi'
+    ? 'IMPORTANT: Provide the response in HINDI language (Devanagari script) for all text fields (summary, reasoning, action, etc). Keep JSON keys in English.'
+    : '';
 
   let multiTimeframeInfo = '';
   if (input.weeklyIndicators && input.monthlyIndicators) {
@@ -39,6 +44,8 @@ MULTI-TIMEFRAME CONTEXT (Crucial for filtering noise):
   const newsItems = news.items.slice(0, 3).map((n) => `  • ${n.title} [${n.sentiment}]`).join('\n');
 
   return `You are an EXPERT Indian stock market analyst with 15+ years of experience.
+
+${langInstruction}
 
 YOUR #1 PRIORITY: ACCURACY OVER EVERYTHING ELSE
 - Only provide high-confidence analysis (>70% certainty)
