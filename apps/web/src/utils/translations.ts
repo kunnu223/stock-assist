@@ -143,5 +143,83 @@ export const translations = {
             en: 'Error occurred',
             hi: 'त्रुटि हुई'
         }
+    },
+    history: {
+        auditLog: {
+            en: 'Audit Log',
+            hi: 'ऑडिट लॉग'
+        },
+        title: {
+            en: 'Intelligence',
+            hi: 'इंटेलिजेंस'
+        },
+        history: {
+            en: 'History',
+            hi: 'इतिहास'
+        },
+        description: {
+            en: 'Access your comprehensive audit log of historical AI stock analysis from the last 60 days.',
+            hi: 'पिछले 60 दिनों के एआई स्टॉक विश्लेषण का अपना विस्तृत ऑडिट लॉग एक्सेस करें।'
+        },
+        filterButton: {
+            en: 'Advanced Filters',
+            hi: 'उन्नत फिल्टर'
+        },
+        exportButton: {
+            en: 'Export Dataset',
+            hi: 'डेटासेट निर्यात करें'
+        },
+        searchPlaceholder: {
+            en: 'Instrument Search',
+            hi: 'इंस्ट्रूमेंट खोजें'
+        },
+        startPoint: {
+            en: 'Start Point',
+            hi: 'आरंभ बिंदु'
+        },
+        endPoint: {
+            en: 'End Point',
+            hi: 'अंत बिंदु'
+        },
+        minConfidence: {
+            en: 'Minimum Confidence',
+            hi: 'न्यूनतम आत्मविश्वास'
+        },
+        bullishSaturation: {
+            en: 'Bullish Saturation',
+            hi: 'तेजी संतृप्ति'
+        },
+        bearishSaturation: {
+            en: 'Bearish Saturation',
+            hi: 'मंदी संतृप्ति'
+        },
+        clearConfig: {
+            en: 'Clear Configuration',
+            hi: 'कॉन्फ़िगरेशन साफ़ करें'
+        },
+        datasetSize: {
+            en: 'Dataset Size',
+            hi: 'डेटासेट आकार'
+        },
+        retention: {
+            en: 'Retention',
+            hi: 'प्रतिधारण'
+        },
+        entries: {
+            en: 'Entries',
+            hi: 'प्रविष्टियां'
+        },
+        zeroMatches: {
+            en: 'ZERO MATCHES',
+            hi: 'कोई मैच नहीं'
+        },
+        noRecords: {
+            en: 'No historical records match your current filter parameters.',
+            hi: 'कोई ऐतिहासिक रिकॉर्ड आपके वर्तमान फ़िल्टर मापदंडों से मेल नहीं खाता है।'
+        },
+        resetDefaults: {
+            en: 'Reset To Defaults',
+            hi: 'डिफ़ॉल्ट पर रीसेट करें'
+        }
     }
 };

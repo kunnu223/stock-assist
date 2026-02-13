@@ -301,7 +301,7 @@ export default function CommodityPage() {
 
             {/* Results */}
             {data && !loading && (
-                <div ref={resultSectionRef} className="animate-in fade-in slide-in-from-bottom-6 duration-1000">
+                <div ref={resultSectionRef} className="scroll-mt-20 animate-in fade-in slide-in-from-bottom-6 duration-1000">
                     <CommodityResult data={data} accentColor={activeCommodity?.color || 'text-amber-400'} />
                 </div>
             )}

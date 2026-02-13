@@ -16,6 +16,8 @@ interface HistoryItem {
     analysis: any;
 }
 
+import { useLanguage } from '@/context/LanguageContext';
+
 export default function HistoryPage() {
     const [loading, setLoading] = useState(true);
     const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -29,6 +31,7 @@ export default function HistoryPage() {
     });
     const [showFilters, setShowFilters] = useState(false);
     const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
+    const { t } = useLanguage();
 
     const fetchHistory = useCallback(async () => {
         setLoading(true);
@@ -73,16 +76,16 @@ export default function HistoryPage() {
     };
 
     return (
-        <div className="space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-10">
+        <div className="space-y-6 md:space-y-12 max-w-7xl mx-auto px-4 pb-24 pt-4 md:pt-10">
             {/* Header section */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-10">
                 <div className="space-y-4">
                     <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-500 text-[10px] font-black uppercase tracking-widest">
                         <History size={12} />
-                        <span>Audit Log</span>
+                        <span>{t('history.auditLog')}</span>
                     </div>
-                    <h1 className="text-5xl font-bold text-foreground tracking-tight">Intelligence <span className="text-primary-500">History</span></h1>
-                    <p className="text-muted-foreground max-w-xl font-medium">Access your comprehensive audit log of historical AI stock analysis from the last 60 days.</p>
+                    <h1 className="text-3xl md:text-5xl font-bold text-foreground tracking-tight">{t('history.title')} <span className="text-primary-500">{t('history.history')}</span></h1>
+                    <p className="text-muted-foreground max-w-xl font-medium">{t('history.description')}</p>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -91,7 +94,7 @@ export default function HistoryPage() {
                         className={`flex items-center gap-2 px-6 py-4 rounded-lg transition-all font-black uppercase tracking-widest text-[10px] border ${showFilters ? 'bg-primary-600 border-primary-600 text-white' : 'bg-zinc-900 border-border text-muted-foreground hover:text-foreground'}`}
                     >
                         <Filter size={16} />
-                        Advanced Filters
+                        {t('history.filterButton')}
                     </button>
                     <button
                         onClick={handleDownload}
@@ -99,7 +102,7 @@ export default function HistoryPage() {
                         className="flex items-center gap-2 px-6 py-4 bg-foreground text-background hover:bg-zinc-200 rounded-lg transition-all font-black uppercase tracking-widest text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Download size={16} />
-                        Export Dataset
+                        {t('history.exportButton')}
                     </button>
                 </div>
             </div>
@@ -111,7 +114,7 @@ export default function HistoryPage() {
                         {/* Search & Dates */}
                         <div className="space-y-8">
                             <div className="space-y-3">
-                                <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">Instrument Search</label>
+                                <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">{t('history.searchPlaceholder')}</label>
                                 <div className="relative">
                                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
                                     <input
@@ -125,7 +128,7 @@ export default function HistoryPage() {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-3">
-                                    <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">Start Point</label>
+                                    <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">{t('history.startPoint')}</label>
                                     <input
                                         type="date"
                                         value={filters.startDate}
@@ -134,7 +137,7 @@ export default function HistoryPage() {
                                     />
                                 </div>
                                 <div className="space-y-3">
-                                    <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">End Point</label>
+                                    <label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest ml-1">{t('history.endPoint')}</label>
                                     <input
                                         type="date"
                                         value={filters.endDate}
@@ -147,18 +150,18 @@ export default function HistoryPage() {
 
                         {/* Sliders */}
                         <div className="space-y-10">
-                            <FilterSlider label="Minimum Confidence" value={filters.minConfidence} onChange={(v) => setFilters({ ...filters, minConfidence: v })} />
-                            <FilterSlider label="Bullish Saturation" value={filters.minBullish} color="green" onChange={(v) => setFilters({ ...filters, minBullish: v })} />
+                            <FilterSlider label={t('history.minConfidence')} value={filters.minConfidence} onChange={(v) => setFilters({ ...filters, minConfidence: v })} />
+                            <FilterSlider label={t('history.bullishSaturation')} value={filters.minBullish} color="green" onChange={(v) => setFilters({ ...filters, minBullish: v })} />
                         </div>
 
                         <div className="space-y-10">
-                            <FilterSlider label="Bearish Saturation" value={filters.minBearish} color="red" onChange={(v) => setFilters({ ...filters, minBearish: v })} />
+                            <FilterSlider label={t('history.bearishSaturation')} value={filters.minBearish} color="red" onChange={(v) => setFilters({ ...filters, minBearish: v })} />
 
                             <button
                                 onClick={() => setFilters({ symbol: '', startDate: '', endDate: '', minConfidence: 0, minBullish: 0, minBearish: 0 })}
                                 className="w-full py-4 rounded-lg border border-border text-zinc-500 hover:text-foreground hover:bg-zinc-900 transition-all text-[10px] font-black uppercase tracking-widest"
                             >
-                                Clear Configuration
+                                {t('history.clearConfig')}
                             </button>
                         </div>
                     </div>
@@ -166,11 +169,11 @@ export default function HistoryPage() {
             )}
 
             {/* Metrics Dashboard */}
-            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-2">
+            <div className="flex items-center justify-between text-[9px] md:text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground px-2">
                 <div className="flex items-center gap-4">
-                    <span>Dataset Size: <span className="text-foreground">{history.length} Entries</span></span>
+                    <span>{t('history.datasetSize')}: <span className="text-foreground">{history.length} {t('history.entries')}</span></span>
                     <div className="h-3 w-px bg-border" />
-                    <span>Retention: <span className="text-foreground">60 Days</span></span>
+                    <span>{t('history.retention')}: <span className="text-foreground">60 Days</span></span>
                 </div>
                 {loading && <RefreshCw className="animate-spin text-primary-500" size={14} />}
             </div>
@@ -196,13 +199,13 @@ export default function HistoryPage() {
                             <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mx-auto border border-border">
                                 <Search size={24} className="text-zinc-700" />
                             </div>
-                            <h3 className="text-xl font-bold text-foreground tracking-tight italic">ZERO MATCHES</h3>
-                            <p className="text-muted-foreground font-medium text-sm px-4">No historical records match your current filter parameters.</p>
+                            <h3 className="text-xl font-bold text-foreground tracking-tight italic">{t('history.zeroMatches')}</h3>
+                            <p className="text-muted-foreground font-medium text-sm px-4">{t('history.noRecords')}</p>
                             <button
                                 onClick={() => setFilters({ symbol: '', startDate: '', endDate: '', minConfidence: 0, minBullish: 0, minBearish: 0 })}
                                 className="text-primary-500 text-[10px] font-black uppercase tracking-widest hover:text-primary-400 transition-colors"
                             >
-                                Reset To Defaults
+                                {t('history.resetDefaults')}
                             </button>
                         </div>
                     </div>
