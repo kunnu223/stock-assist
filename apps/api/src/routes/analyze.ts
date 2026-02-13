@@ -14,8 +14,6 @@ import { validateStockData, validateAIResponse, calculateAverageVolume } from '.
 import { shouldTrade, checkRedFlags } from '../utils/tradeDecision';
 import { savePrediction, applyCalibration } from '../services/backtest';
 import { checkTimeframeAlignment, getAlignmentSummary } from '../utils/timeframeAlignment';
-import * as fs from 'fs';
-import * as path from 'path';
 import { DailyAnalysis } from '../models';
 
 // Enhanced analysis imports
@@ -23,12 +21,14 @@ import { fetchEnhancedNews } from '../services/news/enhanced';
 import { fetchFundamentals } from '../services/data/fundamentals';
 import { performComprehensiveTechnicalAnalysis, getTechnicalSummary, calculateConfidence, calculatePatternConfluence, detectFundamentalTechnicalConflict } from '../services/analysis';
 import { buildEnhancedPrompt } from '../services/ai/enhancedPrompt';
-import { analyzeWithGroq } from '../services/ai/groq';
+import { analyzeWithEnsemble } from '../services/ai/ensembleAI';
 import { compareSector } from '../services/data';
-import { formatAmount, formatPercent, safeNumber } from '../utils/formatting';
+import { calcADX } from '../services/indicators/adx';
+import { formatAmount, formatPercent } from '../utils/formatting';
 import type { StockData } from '@stock-assist/shared';
 import type { ConfidenceResult } from '../services/analysis/confidenceScoring';
 import type { FundamentalData } from '../services/data/fundamentals';
+import { calculateRiskMetrics } from '../services/analysis/riskMetrics';
 
 export const analyzeRouter = Router();
 
@@ -123,38 +123,34 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
     console.log(`[Analyze] 🚀 Enhanced analysis for: ${symbol}`);
 
     try {
-        // Step 1:        // Step 2: Parallel fetch of data
-        console.log(`[analyze.ts:137] 🚀 Starting parallel data fetch for ${symbol}...`);
-        const [stock, technicalAnalysis, enhancedNews, fundamentals] = await Promise.all([
-            // 1. Basic stock data (Quote + History + Multi-timeframe)
-            getStockData(symbol).then(data => {
-                console.log(`[analyze.ts:140] ✅ Stock data fetched for ${symbol}`);
+        // Step 1+2: Parallel fetch of data (fixed: single getStockData call)
+        console.log(`[Analyze] 🚀 Starting parallel data fetch for ${symbol}...`);
+        const [stock, enhancedNews, fundamentals] = await Promise.all([
+            getStockData(symbol, 90).then(data => {  // 90 days for ADX + better indicator accuracy
+                console.log(`[Analyze] ✅ Stock data fetched for ${symbol} (${data.history.length} daily bars)`);
                 return data;
             }),
-
-            // 2. Comprehensive Technical Analysis
-            getStockData(symbol).then(data => {
-                const res = performComprehensiveTechnicalAnalysis({
-                    daily: data.history,
-                    weekly: data.timeframes?.weekly || [],
-                    monthly: data.timeframes?.monthly || []
-                });
-                console.log(`[analyze.ts:145] ✅ Technical analysis complete (Indicators: ${res.indicators.daily ? 'YES' : 'NO'}, Patterns: ${res.patterns.daily ? 'YES' : 'NO'})`);
-                return res;
-            }),
-
-            // 3. Enhanced News Analysis
             fetchEnhancedNews(symbol).then(res => {
-                console.log(`[analyze.ts:150] ✅ News analysis complete (${res.latestHeadlines.length} items, Impact: ${res.impactLevel})`);
+                console.log(`[Analyze] ✅ News analysis complete (${res.latestHeadlines.length} items, Impact: ${res.impactLevel})`);
                 return res;
             }),
-
-            // 4. Fundamental Analysis
             fetchFundamentals(symbol).then(res => {
-                console.log(`[analyze.ts:155] ✅ Fundamentals fetched (Valuation: ${res.valuation}, Growth: ${res.growth})`);
+                console.log(`[Analyze] ✅ Fundamentals fetched (Valuation: ${res.valuation}, Growth: ${res.growth})`);
                 return res;
             })
         ]);
+
+        // Technical analysis runs synchronously on already-fetched data (no duplicate call)
+        const technicalAnalysis = performComprehensiveTechnicalAnalysis({
+            daily: stock.history,
+            weekly: stock.timeframes?.weekly || [],
+            monthly: stock.timeframes?.monthly || []
+        });
+        console.log(`[Analyze] ✅ Technical analysis complete`);
+
+        // ADX trend strength (new indicator)
+        const adxResult = calcADX(stock.history);
+        console.log(`[Analyze] 📈 ADX: ${adxResult.adx} (${adxResult.trendStrength}), +DI=${adxResult.plusDI}, -DI=${adxResult.minusDI}`);
 
         console.log(`[Analyze] Data fetched in ${((Date.now() - start) / 1000).toFixed(1)}s`);
         console.log(`[Analyze] Technical analysis: alignment=${technicalAnalysis.multiTimeframe.alignment}`);
@@ -195,31 +191,92 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
         const sectorComparison = await compareSector(stock.symbol, stock.quote.changePercent);
         console.log(`[analyze.ts:192] 📉 Sector Verdict: ${sectorComparison.verdict}, Outperformance: ${sectorComparison.outperformance}%, Modifier: ${sectorComparison.confidenceModifier}%`);
 
-        // NEW: Calculate adjusted confidence score
+        // NEW: Volume Validation Gate (soft penalty, only for unconfirmed breakouts)
+        const volumeRatio = technicalAnalysis.indicators.daily.volume.ratio;
+        const isBullishBreakout = confidenceResult.recommendation === 'BUY' && stock.quote.changePercent > 1;
+        const isBearishBreakout = confidenceResult.recommendation === 'SELL' && stock.quote.changePercent < -1;
+        let volumeGatePassed = true;
+        let volumePenalty = 0;
+        if ((isBullishBreakout || isBearishBreakout) && volumeRatio < 1.5) {
+            volumeGatePassed = false;
+            volumePenalty = -10;  // Softened from -25: flag it but don't crush the score
+            console.log(`[Analyze] ⚠️ Volume gate FAILED: ${volumeRatio.toFixed(2)}x < 1.5x → -10%`);
+        } else if (volumeRatio >= 2.0) {
+            volumePenalty = 5;  // Reward strong volume confirmation
+            console.log(`[Analyze] ✅ Volume gate PASSED with strength: ${volumeRatio.toFixed(2)}x → +5%`);
+        } else if (volumeRatio >= 1.5) {
+            console.log(`[Analyze] ✅ Volume gate PASSED: ${volumeRatio.toFixed(2)}x`);
+        }
+
+        // NEW: Multi-Timeframe Scoring (proportional, not binary gate)
+        // alignmentScore: 100=all agree, 50=neutral/mixed, 35=some disagreement
+        const alignmentScore = technicalAnalysis.multiTimeframe.alignmentScore || 50;
+        let multiTFPenalty = 0;
+        if (alignmentScore >= 100) {
+            multiTFPenalty = 15;  // All 3 timeframes agree perfectly
+            console.log(`[Analyze] ✅ Multi-TF: Perfect alignment ${alignmentScore}% → +15%`);
+        } else if (alignmentScore >= 65) {
+            multiTFPenalty = 8;  // Strong majority agree
+            console.log(`[Analyze] ✅ Multi-TF: Strong alignment ${alignmentScore}% → +8%`);
+        } else if (alignmentScore >= 50) {
+            multiTFPenalty = 0;  // Neutral/mixed — no penalty, no bonus
+            console.log(`[Analyze] ℹ️ Multi-TF: Neutral alignment ${alignmentScore}% → 0%`);
+        } else {
+            multiTFPenalty = -10;  // Active disagreement between timeframes
+            console.log(`[Analyze] ⚠️ Multi-TF: Conflicting signals ${alignmentScore}% → -10%`);
+        }
+
+        // NEW: ADX Trend Strength Filter (soft modifiers)
+        let adxPenalty = 0;
+        if (adxResult.adx < 15) {
+            adxPenalty = -8;  // Choppy market, mild warning
+            console.log(`[Analyze] ⚠️ ADX choppy market: ${adxResult.adx} < 15 → -8%`);
+        } else if (adxResult.adx < 20) {
+            adxPenalty = -5;  // Weak trend
+            console.log(`[Analyze] ⚠️ ADX weak trend: ${adxResult.adx} < 20 → -5%`);
+        } else if (adxResult.adx >= 25) {
+            adxPenalty = 8;   // Strong trend confirmation
+            console.log(`[Analyze] ✅ ADX strong trend: ${adxResult.adx} → +8%`);
+        }
+
+        // Calculate adjusted confidence with ALL gates
         const baseConfidence = confidenceResult.score;
-        const adjustedConfidence = Math.max(0, Math.min(100,
+        const adjustedConfidence = Math.max(15, Math.min(95,
             baseConfidence +
             patternConfluence.confidenceModifier +
             ftConflict.confidenceAdjustment +
-            sectorComparison.confidenceModifier
+            sectorComparison.confidenceModifier +
+            volumePenalty +
+            multiTFPenalty +
+            adxPenalty
         ));
-        console.log(`[analyze.ts:202] 🎯 Final Confidence: ${baseConfidence}% → ${adjustedConfidence}% (Adjusted)`);
+        console.log(`[Analyze] 🎯 Confidence: ${baseConfidence}% → ${adjustedConfidence}% (vol:${volumePenalty}, mtf:${multiTFPenalty}, adx:${adxPenalty}, confluence:${patternConfluence.confidenceModifier}, ft:${ftConflict.confidenceAdjustment}, sector:${sectorComparison.confidenceModifier})`);
 
-        // NEW: Breaking news override
+        // NEW: Calculate risk metrics
+        const direction = confidenceResult.recommendation === 'BUY' ? 'bullish' : confidenceResult.recommendation === 'SELL' ? 'bearish' : 'neutral';
+        const riskMetrics = calculateRiskMetrics(
+            stock.history,
+            technicalAnalysis.indicators.daily,
+            adjustedConfidence,
+            direction
+        );
+        console.log(`[Analyze] 📊 Risk: ExpReturn=${riskMetrics.expectedReturn}%, Sharpe=${riskMetrics.sharpeRatio}, WinRate=${riskMetrics.winRate}%, MaxDD=${riskMetrics.maxDrawdown}%`);
+
+        // Breaking news override
         let breakingNewsOverride = false;
         if (enhancedNews.breakingImpact === 'HIGH' && enhancedNews.breakingNews.length > 0) {
             const negativeBreaking = enhancedNews.breakingNews.some(n => n.sentiment === 'negative');
             if (negativeBreaking) {
                 breakingNewsOverride = true;
-                console.log(`[analyze.ts:210] ⚠️ Breaking negative news detected - capping bullish probability`);
+                console.log(`[Analyze] ⚠️ Breaking negative news detected - capping bullish probability`);
             }
         }
 
         // Step 4: Generate technical summary for AI
         const technicalSummary = getTechnicalSummary(technicalAnalysis);
 
-        // Step 5: Build enhanced prompt and get AI analysis
-        const enhancedPrompt = buildEnhancedPrompt({
+        // Step 5: Build enhanced prompt and get AI analysis via ENSEMBLE
+        const promptInput = {
             stock,
             indicators: technicalAnalysis.indicators.daily,
             patterns: technicalAnalysis.patterns.daily,
@@ -235,10 +292,15 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             ftConflict,
             sectorComparison,
             multiTimeframe: technicalAnalysis.multiTimeframe
-        });
+        };
+        const enhancedPrompt = buildEnhancedPrompt(promptInput);
 
-        // Use enhanced AI analysis
-        let aiAnalysis = await analyzeWithEnhancedPrompt(enhancedPrompt, stock.symbol);
+        // NEW: Ensemble AI (Groq + Gemini in parallel)
+        const ensembleResult = await analyzeWithEnsemble(
+            { stock, indicators: technicalAnalysis.indicators.daily, patterns: technicalAnalysis.patterns.daily, news: enhancedNews as any },
+            adjustedConfidence
+        );
+        let aiAnalysis: any = ensembleResult?.analysis || null;
 
         // Fallback if AI fails or returns invalid recommendation
         if (!aiAnalysis) {
@@ -265,10 +327,27 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             }
         }
 
-        // Default bullish/bearish scenarios
+        // Default bullish/bearish scenarios — probabilities tied to adjusted confidence
         const sr = technicalAnalysis.indicators.daily.sr;
+
+        // Calculate dynamic probabilities based on the system's confidence + direction
+        let bullishProb: number;
+        let bearishProb: number;
+        if (confidenceResult.recommendation === 'BUY') {
+            bullishProb = Math.min(85, Math.max(55, adjustedConfidence + 10));
+            bearishProb = 100 - bullishProb;
+        } else if (confidenceResult.recommendation === 'SELL') {
+            bearishProb = Math.min(85, Math.max(55, adjustedConfidence + 10));
+            bullishProb = 100 - bearishProb;
+        } else {
+            // HOLD/WAIT — slight bias from technicals
+            const techScore = confidenceResult.breakdown.technicalAlignment;
+            bullishProb = Math.round(Math.max(30, Math.min(70, techScore)));
+            bearishProb = 100 - bullishProb;
+        }
+
         const defaultBullish = {
-            probability: confidenceResult.recommendation === 'BUY' ? 65 : 40,
+            probability: bullishProb,
             score: confidenceResult.breakdown.technicalAlignment,
             trigger: `Break above ₹${sr.resistance}`,
             confirmation: 'Close above with volume',
@@ -289,7 +368,7 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
         };
 
         const defaultBearish = {
-            probability: confidenceResult.recommendation === 'SELL' ? 65 : 35,
+            probability: bearishProb,
             score: 100 - confidenceResult.breakdown.technicalAlignment,
             trigger: `Break below ₹${sr.support}`,
             confirmation: 'Close below with volume',
@@ -317,7 +396,7 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                 stock: stock.symbol,
                 currentPrice: formatAmount(stock.quote.price),
                 recommendation: aiAnalysis.recommendation || confidenceResult.recommendation,
-                confidenceScore: aiAnalysis.confidenceScore || adjustedConfidence, // Use adjusted confidence
+                confidenceScore: adjustedConfidence, // ALWAYS use system-adjusted confidence
                 timeframe: aiAnalysis.timeframe || 'swing',
 
                 // NEW: Highlights and Badges (User Request)
@@ -337,14 +416,33 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                     ].filter(Boolean)
                 },
 
-                // NEW: Accuracy metrics
+                // Accuracy metrics + quality gates
                 accuracyMetrics: {
                     baseConfidence: confidenceResult.score,
                     adjustedConfidence,
                     modifiers: {
                         patternConfluence: patternConfluence.confidenceModifier,
                         fundamentalTechnical: ftConflict.confidenceAdjustment,
-                        sectorComparison: sectorComparison.confidenceModifier
+                        sectorComparison: sectorComparison.confidenceModifier,
+                        volumeGate: volumePenalty,
+                        multiTimeframeGate: multiTFPenalty,
+                        adxFilter: adxPenalty,
+                        ensembleDisagreement: ensembleResult?.disagreementPenalty || 0
+                    },
+                    qualityGates: {
+                        volumeValidated: volumeGatePassed,
+                        volumeRatio: Number(volumeRatio.toFixed(2)),
+                        multiTimeframeAligned: alignmentScore >= 65,
+                        alignedTimeframes: alignmentScore,
+                        adxTrendStrength: adxResult.trendStrength,
+                        adxValue: adxResult.adx,
+                        adxDirection: adxResult.trendDirection
+                    },
+                    ensemble: {
+                        modelUsed: ensembleResult?.modelUsed || 'fallback',
+                        groqConfidence: ensembleResult?.groqConfidence,
+                        geminiConfidence: ensembleResult?.geminiConfidence,
+                        agreement: ensembleResult?.agreement || 'N/A'
                     },
                     patternConfluence: {
                         score: patternConfluence.score,
@@ -412,14 +510,24 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                 validUntil: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
                 confidenceBreakdown: confidenceResult.breakdown,
                 bias: aiAnalysis.bias || (confidenceResult.recommendation === 'BUY' ? 'BULLISH' : confidenceResult.recommendation === 'SELL' ? 'BEARISH' : 'NEUTRAL'),
-                confidence: confidenceResult.score > 70 ? 'HIGH' : confidenceResult.score > 50 ? 'MEDIUM' : 'LOW',
-                category: confidenceResult.score > 65 && (confidenceResult.recommendation === 'BUY' || confidenceResult.recommendation === 'SELL')
+                confidence: adjustedConfidence > 70 ? 'HIGH' : adjustedConfidence > 50 ? 'MEDIUM' : 'LOW',
+                category: adjustedConfidence > 65 && (confidenceResult.recommendation === 'BUY' || confidenceResult.recommendation === 'SELL')
                     ? 'STRONG_SETUP'
-                    : confidenceResult.score < 40
+                    : adjustedConfidence < 40
                         ? 'AVOID'
                         : 'NEUTRAL',
                 bullish: aiAnalysis.bullish || defaultBullish,
-                bearish: aiAnalysis.bearish || defaultBearish
+                bearish: aiAnalysis.bearish || defaultBearish,
+
+                // Risk metrics
+                riskMetrics: {
+                    expectedReturn: riskMetrics.expectedReturn,
+                    sharpeRatio: riskMetrics.sharpeRatio,
+                    maxDrawdown: riskMetrics.maxDrawdown,
+                    volatility: riskMetrics.volatility,
+                    riskRewardRatio: riskMetrics.riskRewardRatio,
+                    winRate: riskMetrics.winRate
+                }
             }
         };
 
@@ -680,134 +788,7 @@ async function processStock(stock: any, skipAI: boolean = false): Promise<any> {
     }
 }
 
-const AI_CACHE = new Map<string, { data: any, timestamp: number }>();
-const CACHE_TTL = 1 * 60 * 1000; // 1 minute (as requested)
 
-/**
- * Enhanced AI analysis using Groq with custom prompt and model rotation
- */
-async function analyzeWithEnhancedPrompt(prompt: string, symbol: string): Promise<any> {
-    // Check cache first
-    if (AI_CACHE.has(symbol)) {
-        const { data, timestamp } = AI_CACHE.get(symbol)!;
-        if (Date.now() - timestamp < CACHE_TTL) {
-            console.log(`[EnhancedAI] ⚡ Returning cached analysis for ${symbol}`);
-            return data;
-        }
-        AI_CACHE.delete(symbol); // Expired
-    }
-
-    const Groq = (await import('groq-sdk')).default;
-    const key = process.env.GROQ_API_KEY;
-
-    if (!key || key === 'demo-key') {
-        console.log('[EnhancedAI] No valid API key, skipping AI analysis');
-        return null;
-    }
-
-    const client = new Groq({ apiKey: key });
-
-    // Models to try in order of preference
-    // Only using verified active models to prevent 400 Decommissioned errors
-    const models = [
-        'llama-3.3-70b-versatile', // Primary
-        'llama-3.1-8b-instant',    // Fast fallback
-        'llama3-8b-8192'           // Legacy fallback
-    ];
-
-    for (const model of models) {
-        try {
-            console.log(`[EnhancedAI] Analyzing ${symbol} with ${model}...`);
-
-            const completion = await client.chat.completions.create({
-                model: model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: 'You are a professional stock market analyst. Respond only with valid JSON. No markdown code blocks.'
-                    },
-                    {
-                        role: 'user',
-                        content: prompt
-                    }
-                ],
-                temperature: 0.1, // Lower temperature for consistency
-                max_tokens: 3000,
-            });
-
-            const text = completion.choices[0]?.message?.content;
-            if (!text) {
-                console.warn(`[EnhancedAI] Empty response from ${model} for ${symbol}`);
-                continue; // Try next model
-            }
-
-            // Parse JSON from response
-            const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            const start = cleaned.indexOf('{');
-            const end = cleaned.lastIndexOf('}');
-
-            if (start === -1 || end === -1) {
-                console.warn(`[EnhancedAI] Invalid JSON structure from ${model}`);
-                console.debug(`[EnhancedAI] Raw output: ${text.substring(0, 100)}...`);
-                continue; // Try next model
-            }
-
-            try {
-                const parsed = JSON.parse(cleaned.substring(start, end + 1));
-                console.log(`[EnhancedAI] ✅ Successfully analyzed ${symbol} using ${model}`);
-
-                // Store in cache
-                AI_CACHE.set(symbol, { data: parsed, timestamp: Date.now() });
-
-                // Optional: cleanup old cache entries if too large
-                if (AI_CACHE.size > 100) {
-                    const oldest = AI_CACHE.keys().next().value;
-                    if (oldest) AI_CACHE.delete(oldest);
-                }
-
-                return parsed;
-            } catch (jsonErr) {
-                console.warn(`[EnhancedAI] JSON parse error from ${model}:`, (jsonErr as Error).message);
-                // console.debug(`[EnhancedAI] Failed JSON: ${cleaned}`);
-                continue;
-            }
-
-        } catch (error) {
-            const msg = (error as Error).message;
-            console.warn(`[EnhancedAI] ⚠️ Failed with ${model}: ${msg}`);
-
-            // If it's a rate limit or server error, try next model.
-            // If it's an invalid API key, stop.
-            if (msg.includes('401') || msg.includes('API key')) {
-                console.error('[EnhancedAI] Invalid API key, stopping.');
-                return null;
-            }
-        }
-    }
-
-    console.error(`[EnhancedAI] ❌ All Groq models failed for ${symbol}, falling back to Gemini...`);
-
-    try {
-        // Use the existing analyzeWithGemini service as fallback
-        const { analyzeWithGemini } = await import('../services/ai/gemini');
-        // We need to construct a PromptInput
-        const geminiResult = await analyzeWithGemini({
-            stock: { symbol } as any, // Only symbol needed for prompt building in basic gemini service
-            indicators: {} as any,
-            patterns: {} as any,
-            news: { items: [] } as any
-        });
-
-        if (geminiResult) {
-            console.log(`[EnhancedAI] ✅ Successfully analyzed ${symbol} using Gemini Fallback`);
-            return geminiResult;
-        }
-    } catch (fallbackErr) {
-        console.error(`[EnhancedAI] ❌ Gemini fallback also failed:`, fallbackErr);
-    }
-
-    return null;
-}
 
 /**
  * Generate fallback analysis when AI is unavailable
