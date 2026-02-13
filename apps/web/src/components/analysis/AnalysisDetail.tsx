@@ -76,38 +76,40 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
     return (
         <div className="space-y-6 max-w-6xl mx-auto">
             {/* Executive Summary */}
-            <div className="border border-border bg-zinc-950/50 p-8 rounded-xl relative overflow-hidden">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 relative z-10">
-                    <div>
-                        <div className="flex items-center gap-4 mb-2">
-                            <h2 className="text-4xl font-bold tracking-tight text-foreground">{data.stock}</h2>
-                            <button
-                                onClick={() => toggleFollow(data.stock)}
-                                className={`p-2 rounded-lg border transition-all ${followed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-zinc-900 border-border text-zinc-500 hover:text-foreground'}`}
-                            >
-                                <Star size={20} fill={followed ? 'currentColor' : 'none'} />
-                            </button>
-                            <div className={`px-4 py-1 rounded text-xs font-bold uppercase tracking-[0.1em] ${getSignalStyle(data.recommendation)}`}>
+            <div className="border border-border bg-zinc-950/50 p-5 md:p-8 rounded-xl relative overflow-hidden">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-8 relative z-10">
+                    <div className="w-full md:w-auto">
+                        <div className="flex items-center justify-between md:justify-start gap-4 mb-2">
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground">{data.stock}</h2>
+                                <button
+                                    onClick={() => toggleFollow(data.stock)}
+                                    className={`p-2 rounded-lg border transition-all ${followed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-zinc-900 border-border text-zinc-500 hover:text-foreground'}`}
+                                >
+                                    <Star size={18} className="md:w-5 md:h-5" fill={followed ? 'currentColor' : 'none'} />
+                                </button>
+                            </div>
+                            <div className={`px-3 py-1 rounded text-[10px] md:text-xs font-bold uppercase tracking-[0.1em] ${getSignalStyle(data.recommendation)}`}>
                                 {data.recommendation}
                             </div>
                         </div>
                         <div className="flex items-center gap-6 mt-4">
                             <div className="space-y-0.5">
                                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Price</p>
-                                <p className="text-2xl font-bold text-foreground">₹{data.currentPrice}</p>
+                                <p className="text-xl md:text-2xl font-bold text-foreground">₹{data.currentPrice}</p>
                             </div>
-                            <div className="h-10 w-px bg-border" />
+                            <div className="h-8 md:h-10 w-px bg-border" />
                             <div className="space-y-0.5">
                                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Confidence</p>
-                                <p className={`text-2xl font-bold ${getConfidenceColor(data.confidenceScore)}`}>
-                                    {data.confidenceScore}<span className="text-sm text-muted-foreground">/100</span>
+                                <p className={`text-xl md:text-2xl font-bold ${getConfidenceColor(data.confidenceScore)}`}>
+                                    {data.confidenceScore}<span className="text-xs md:text-sm text-muted-foreground">/100</span>
                                 </p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-zinc-900 border border-border p-6 rounded-lg min-w-[240px]">
-                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mb-4">Signal Integrity</p>
+                    <div className="bg-zinc-900 border border-border p-4 md:p-6 rounded-lg w-full md:min-w-[240px] md:w-auto">
+                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mb-3 md:mb-4">Signal Integrity</p>
                         <div className="space-y-3">
                             <IntegrityRow label="Chart Alignment" value={data.confidenceBreakdown.technicalAlignment} />
                             <IntegrityRow label="News Sentiment" value={data.confidenceBreakdown.newsSentiment} />
@@ -272,7 +274,7 @@ function ScenarioPanel({ title, scenario, type, active }: any) {
     const accent = isBullish ? 'emerald' : 'rose';
 
     return (
-        <div className={`border-2 rounded-xl p-6 transition-all h-full flex flex-col ${active
+        <div className={`border-2 rounded-xl p-4 md:p-6 transition-all h-full flex flex-col ${active
             ? `border-${accent}-500/30 bg-${accent}-500/[0.03]`
             : 'border-zinc-800 bg-zinc-950/20'
             }`}>

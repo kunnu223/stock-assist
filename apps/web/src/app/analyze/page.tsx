@@ -51,14 +51,14 @@ export default function AnalyzePage() {
             {/* Header section */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-6 md:pb-10">
                 <div className="space-y-3 md:space-y-4">
-                    <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-500 text-[10px] font-black uppercase tracking-widest">
+                    <div className="hidden md:inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-500 text-[10px] font-black uppercase tracking-widest">
                         <Terminal size={12} />
-                        <span>Real-Time Engine</span>
+                        <span>Live Scan</span>
                     </div>
-                    <h1 className="text-3xl md:text-5xl font-bold text-foreground tracking-tight">Intelligence <span className="text-primary-500">Scanner</span></h1>
-                    <p className="text-muted-foreground max-w-xl font-medium">Deploy advanced AI models to scan market patterns, sentiment, and fundamental data in seconds.</p>
+                    <h1 className="text-3xl md:text-5xl font-bold text-foreground tracking-tight">Market <span className="text-primary-500">X-Ray</span></h1>
+                    <p className="text-muted-foreground max-w-xl font-medium text-sm md:text-base">Stop guessing. Scan any stock to reveal hidden patterns, risks, and true market direction instantly.</p>
                 </div>
-                <div className="flex items-center gap-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                <div className="hidden md:flex items-center gap-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">
                     <div className="flex items-center gap-2">
                         <Shield size={14} className="text-primary-500" />
                         <span>Pattern Verified</span>
@@ -70,29 +70,34 @@ export default function AnalyzePage() {
 
             {/* Scanning Logic */}
             <div className="max-w-3xl">
-                <div className="premium-card p-2 rounded-xl flex gap-2 shadow-premium bg-zinc-950/50">
-                    <div className="relative flex-1 group">
-                        <div className="absolute left-6 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary-500 transition-colors">
-                            <Search size={22} />
+                <div className="flex flex-col md:flex-row gap-3 md:gap-2 md:premium-card md:p-2 md:rounded-xl md:shadow-premium md:bg-zinc-950/50">
+                    <div className="relative flex-1 group bg-zinc-950/50 md:bg-transparent p-1 md:p-0 rounded-xl md:rounded-none border border-border md:border-none shadow-sm md:shadow-none">
+                        <div className="absolute left-4 md:left-6 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary-500 transition-colors">
+                            <Search size={20} className="md:w-[22px] md:h-[22px]" />
                         </div>
                         <input
                             type="text"
                             value={symbol}
                             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                             onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-                            placeholder="Enter Instrument Symbol (e.g., RELIANCE, TCS)"
-                            className="w-full bg-transparent pl-16 pr-6 py-5 text-lg font-bold text-foreground focus:outline-none placeholder-zinc-700 tracking-tight"
+                            placeholder="Enter Instrument Symbol (e.g., RELIANCE)"
+                            className="w-full bg-transparent pl-12 md:pl-16 pr-4 md:pr-6 py-4 md:py-5 text-base md:text-lg font-bold text-foreground focus:outline-none placeholder-zinc-700 tracking-tight uppercase"
                         />
                     </div>
                     <button
                         onClick={handleAnalyze}
                         disabled={loading || !symbol}
-                        className="bg-primary-600 hover:bg-primary-500 disabled:bg-zinc-800 disabled:text-zinc-600 px-10 py-4 rounded-lg font-black transition-all flex items-center gap-3 active:scale-95 text-white uppercase tracking-widest text-xs"
+                        className="relative w-full md:w-auto bg-primary-600 hover:bg-primary-500 disabled:bg-zinc-800 disabled:text-zinc-600 px-6 md:px-10 h-[52px] rounded-xl md:rounded-lg font-black transition-all flex items-center justify-center active:scale-95 text-white uppercase tracking-widest text-xs shadow-lg md:shadow-none"
                     >
-                        {loading ? <Activity className="animate-spin" size={18} /> : <span>Execute Scan</span>}
+                        <span className={loading ? 'invisible' : 'visible'}>Execute Scan</span>
+                        {loading && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <Activity className="animate-spin" size={16} />
+                            </div>
+                        )}
                     </button>
                 </div>
-                <p className="mt-4 px-2 text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                <p className="mt-4 px-2 text-[10px] text-muted-foreground font-bold uppercase tracking-widest hidden md:block">
                     Support for NSE, BSE, and Global Exchanges via Yahoo Finance API
                 </p>
             </div>
@@ -104,13 +109,13 @@ export default function AnalyzePage() {
             )}
 
             {!data && !loading && (
-                <div className="py-40 flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in zoom-in-95 duration-700">
-                    <div className="w-24 h-24 bg-zinc-900 border border-border rounded-2xl flex items-center justify-center rotate-3 hover:rotate-0 transition-transform duration-500 shadow-premium">
-                        <Activity className="text-zinc-600" size={40} />
+                <div className="py-20 md:py-40 flex flex-col items-center justify-center text-center space-y-6 md:space-y-8 animate-in fade-in zoom-in-95 duration-700">
+                    <div className="w-16 h-16 md:w-24 md:h-24 bg-zinc-900 border border-border rounded-2xl flex items-center justify-center rotate-3 hover:rotate-0 transition-transform duration-500 shadow-premium">
+                        <Activity className="text-zinc-600" size={32} />
                     </div>
-                    <div className="space-y-2">
-                        <h3 className="text-2xl font-bold text-foreground tracking-tight uppercase">Ready for Deployment</h3>
-                        <p className="text-muted-foreground font-medium max-w-sm mx-auto">Input a ticker symbol above to generate a comprehensive institutional-grade market report.</p>
+                    <div className="space-y-2 px-4">
+                        <h3 className="text-xl md:text-2xl font-bold text-foreground tracking-tight uppercase">Ready for Deployment</h3>
+                        <p className="text-muted-foreground font-medium max-w-sm mx-auto text-sm md:text-base">Input a ticker symbol above to generate a comprehensive institutional-grade market report.</p>
                     </div>
                 </div>
             )}
