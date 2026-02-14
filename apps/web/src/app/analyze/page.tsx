@@ -83,7 +83,7 @@ export default function AnalyzePage() {
             </div>
 
             {/* Scanning Logic */}
-            <div className="max-w-3xl">
+            <div className="max-w-full">
                 <div className="flex flex-col md:flex-row gap-4 relative z-10 w-full mb-8">
                     <div className="relative group flex-1">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary-500 transition-colors" size={20} />
@@ -109,7 +109,7 @@ export default function AnalyzePage() {
                             </>
                         ) : (
                             <>
-                                <Terminal size={20} />
+                                <Search size={20} />
                                 <span>{t('analyze.scanButton')}</span>
                             </>
                         )}
@@ -118,7 +118,7 @@ export default function AnalyzePage() {
 
                 {/* Results Section */}
                 {analysis && (
-                    <div ref={resultsRef} className="animate-in fade-in slide-in-from-bottom-6 duration-1000">
+                    <div ref={resultsRef} className="scroll-mt-24 animate-in fade-in slide-in-from-bottom-6 duration-1000">
                         <AnalysisDetail data={analysis} />
                     </div>
                 )}

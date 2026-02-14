@@ -67,6 +67,14 @@ export const translations = {
         readyDesc: {
             en: 'Input a ticker symbol above to generate a comprehensive institutional-grade market report.',
             hi: 'संस्थागत-स्तर की विस्तृत बाज़ार रिपोर्ट बनाने के लिए ऊपर एक टिकर सिंबल दर्ज करें।'
+        },
+        inputPlaceholder: {
+            en: 'Enter Symbol (e.g. RELIANCE)',
+            hi: 'सिंबल दर्ज करें (जैसे RELIANCE)'
+        },
+        scanButton: {
+            en: 'SCAN STOCK',
+            hi: 'स्टॉक स्कैन'
         }
     },
     commodity: {
