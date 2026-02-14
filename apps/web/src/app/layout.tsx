@@ -4,6 +4,7 @@ import './globals.css';
 import { Navbar } from '@/components/layout/Navbar';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { InstallPrompt } from '@/components/pwa/InstallPrompt';
+import { SplashScreen } from '@/components/layout/SplashScreen';
 import { WatchlistProvider } from '@/context/WatchlistContext';
 import Script from 'next/script';
 
@@ -76,7 +77,7 @@ export const viewport: Viewport = {
     initialScale: 1,
     maximumScale: 5,
     userScalable: true,
-    themeColor: '#f59e0b',
+    themeColor: '#000000',
 };
 
 import { LanguageProvider } from '@/context/LanguageContext';
@@ -124,6 +125,7 @@ export default function RootLayout({
                         <main className="pt-20 sm:pt-24 pb-28 sm:pb-12 px-4 sm:px-6">
                             {children}
                         </main>
+                        <SplashScreen />
                         <InstallPrompt />
                         <BottomNav />
                     </WatchlistProvider>

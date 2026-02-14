@@ -4,8 +4,8 @@
   "description": "Advanced stock and commodity analysis with multi-horizon trading plans, crash detection, and technical indicators",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#f59e0b",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait-primary",
   "icons": [
     {
