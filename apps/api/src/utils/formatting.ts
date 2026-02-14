@@ -5,27 +5,35 @@
 
 /**
  * Format currency amount to 2 decimal places
- * Returns string representation to avoid floating point issues
+ * Returns number to avoid floating point issues
  */
-export const formatAmount = (value: number | undefined | null): number => {
-    if (value === undefined || value === null || isNaN(value)) return 0;
-    return parseFloat(value.toFixed(2));
+export const formatAmount = (value: number | string | undefined | null): number => {
+    if (value === undefined || value === null) return 0;
+
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return 0;
+
+    return parseFloat(num.toFixed(2));
 };
 
 /**
  * Format currency string (e.g. "₹123.45")
  */
-export const formatCurrency = (value: number | undefined | null): string => {
-    if (value === undefined || value === null || isNaN(value)) return '₹0.00';
-    return `₹${value.toFixed(2)}`;
+export const formatCurrency = (value: number | string | undefined | null): string => {
+    const num = formatAmount(value);
+    return `₹${num.toFixed(2)}`;
 };
 
 /**
  * Format percentage to 2 decimal places
  */
-export const formatPercent = (value: number | undefined | null): number => {
-    if (value === undefined || value === null || isNaN(value)) return 0;
-    return parseFloat(value.toFixed(2));
+export const formatPercent = (value: number | string | undefined | null): number => {
+    if (value === undefined || value === null) return 0;
+
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return 0;
+
+    return parseFloat(num.toFixed(2));
 };
 
 /**
