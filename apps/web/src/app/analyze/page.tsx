@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Activity, Terminal, Shield } from 'lucide-react';
 import { AnalysisDetail } from '@/components/analysis/AnalysisDetail';
 
@@ -8,9 +8,11 @@ import { useLanguage } from '@/context/LanguageContext';
 
 export default function AnalyzePage() {
     const [symbol, setSymbol] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [data, setData] = useState<any | null>(null);
+    const [isScanning, setIsScanning] = useState(false);
+    const [analysis, setAnalysis] = useState<any | null>(null);
+    const [error, setError] = useState<string | null>(null); // Added error state
     const { t, language } = useLanguage();
+    const resultsRef = useRef<HTMLDivElement>(null); // Added ref for scrolling
 
     // Auto-scan on mount if query params present
     useEffect(() => {
@@ -26,25 +28,34 @@ export default function AnalyzePage() {
         }
     }, [language]); // Re-run if language changes? Maybe not needed for auto-scan but good for safety
 
-    const executeScan = async (sym: string) => {
-        if (!sym) return;
-        setLoading(true);
-        setData(null);
+    const executeScan = async (searchSymbol: string) => { // Changed parameter name
+        if (!searchSymbol) return;
+        setIsScanning(true); // Renamed from setLoading
+        setAnalysis(null); // Renamed from setData
+        setError(null); // Reset error
 
         try {
             const res = await fetch('/api/analyze/single', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ symbol: sym, language }),
+                body: JSON.stringify({ symbol: searchSymbol, language }), // Used searchSymbol
             });
             const response = await res.json();
             if (response.success) {
-                setData(response.analysis);
+                setAnalysis(response.analysis); // Renamed from setData
+                // Scroll to results after a short delay to allow render
+                setTimeout(() => {
+                    resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+            } else {
+                setError(response.error || 'Analysis failed'); // Set error on failure
             }
         } catch (err) {
             console.error('Analysis failed:', err);
+            setError('Failed to connect to server'); // Set error on network issues
+        } finally {
+            setIsScanning(false); // Renamed from setLoading, moved to finally
         }
-        setLoading(false);
     };
 
     const handleAnalyze = () => executeScan(symbol);
@@ -73,55 +84,63 @@ export default function AnalyzePage() {
 
             {/* Scanning Logic */}
             <div className="max-w-3xl">
-                <div className="flex flex-col md:flex-row gap-3 md:gap-2 md:premium-card md:p-2 md:rounded-xl md:shadow-premium md:bg-zinc-950/50">
-                    <div className="relative flex-1 group bg-zinc-950/50 md:bg-transparent p-1 md:p-0 rounded-xl md:rounded-none border border-border md:border-none shadow-sm md:shadow-none">
-                        <div className="absolute left-4 md:left-6 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary-500 transition-colors">
-                            <Search size={20} className="md:w-[22px] md:h-[22px]" />
-                        </div>
+                <div className="flex flex-col md:flex-row gap-4 relative z-10 w-full mb-8">
+                    <div className="relative group flex-1">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary-500 transition-colors" size={20} />
                         <input
                             type="text"
+                            placeholder={t('analyze.inputPlaceholder')}
+                            className="w-full bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-primary-500 transition-all font-medium text-lg placeholder:text-zinc-600 disabled:opacity-50"
                             value={symbol}
                             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                             onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-                            placeholder={t('analyze.placeholder')}
-                            className="w-full bg-transparent pl-12 md:pl-16 pr-4 md:pr-6 py-4 md:py-5 text-base md:text-lg font-bold text-foreground focus:outline-none placeholder-zinc-700 tracking-tight uppercase"
+                            disabled={isScanning}
                         />
                     </div>
                     <button
                         onClick={handleAnalyze}
-                        disabled={loading || !symbol}
-                        className="relative w-full md:w-auto bg-primary-600 hover:bg-primary-500 disabled:bg-zinc-800 disabled:text-zinc-600 px-6 md:px-10 h-[52px] rounded-xl md:rounded-lg font-black transition-all flex items-center justify-center active:scale-95 text-white uppercase tracking-widest text-xs shadow-lg md:shadow-none"
+                        disabled={isScanning || !symbol}
+                        className="bg-primary-600 hover:bg-primary-500 text-white px-8 py-4 rounded-xl font-bold tracking-wide transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary-600/20 active:scale-95 flex items-center justify-center gap-2 min-w-[140px]"
                     >
-                        <span className={loading ? 'invisible' : 'visible'}>{t('analyze.execute')}</span>
-                        {loading && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <Activity className="animate-spin" size={16} />
-                            </div>
+                        {isScanning ? (
+                            <>
+                                <Activity className="animate-spin" size={20} />
+                                <span>SCANNING...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Terminal size={20} />
+                                <span>{t('analyze.scanButton')}</span>
+                            </>
                         )}
                     </button>
                 </div>
-                <p className="mt-4 px-2 text-[10px] text-muted-foreground font-bold uppercase tracking-widest hidden md:block">
-                    {t('analyze.support')}
-                </p>
+
+                {/* Results Section */}
+                {analysis && (
+                    <div ref={resultsRef} className="animate-in fade-in slide-in-from-bottom-6 duration-1000">
+                        <AnalysisDetail data={analysis} />
+                    </div>
+                )}
+
+                {error && (
+                    <div className="py-10 text-center text-red-500 font-medium bg-red-500/10 rounded-xl border border-red-500/20">
+                        {error}
+                    </div>
+                )}
+
+                {!analysis && !isScanning && !error && (
+                    <div className="py-20 md:py-40 flex flex-col items-center justify-center text-center space-y-6 md:space-y-8 animate-in fade-in zoom-in-95 duration-700">
+                        <div className="w-16 h-16 md:w-24 md:h-24 bg-zinc-900 border border-border rounded-2xl flex items-center justify-center rotate-3 hover:rotate-0 transition-transform duration-500 shadow-premium">
+                            <Activity className="text-zinc-600" size={32} />
+                        </div>
+                        <div className="space-y-2 px-4">
+                            <h3 className="text-xl md:text-2xl font-bold text-foreground tracking-tight uppercase">{t('analyze.ready')}</h3>
+                            <p className="text-muted-foreground font-medium max-w-sm mx-auto text-sm md:text-base">{t('analyze.readyDesc')}</p>
+                        </div>
+                    </div>
+                )}
             </div>
-
-            {data && (
-                <div className="animate-in fade-in slide-in-from-bottom-6 duration-1000">
-                    <AnalysisDetail data={data} />
-                </div>
-            )}
-
-            {!data && !loading && (
-                <div className="py-20 md:py-40 flex flex-col items-center justify-center text-center space-y-6 md:space-y-8 animate-in fade-in zoom-in-95 duration-700">
-                    <div className="w-16 h-16 md:w-24 md:h-24 bg-zinc-900 border border-border rounded-2xl flex items-center justify-center rotate-3 hover:rotate-0 transition-transform duration-500 shadow-premium">
-                        <Activity className="text-zinc-600" size={32} />
-                    </div>
-                    <div className="space-y-2 px-4">
-                        <h3 className="text-xl md:text-2xl font-bold text-foreground tracking-tight uppercase">{t('analyze.ready')}</h3>
-                        <p className="text-muted-foreground font-medium max-w-sm mx-auto text-sm md:text-base">{t('analyze.readyDesc')}</p>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

@@ -4,24 +4,25 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const SplashScreen = () => {
-    const [showSplash, setShowSplash] = useState(false);
+    const [showSplash, setShowSplash] = useState(true);
 
     useEffect(() => {
         // Check session storage immediately
         const hasSeenSplash = sessionStorage.getItem('hasSeenSplash');
 
-        // Only show if NOT seen yet
-        if (!hasSeenSplash) {
-            setShowSplash(true);
-
-            // Hide after delay and mark as seen
-            const timer = setTimeout(() => {
-                setShowSplash(false);
-                sessionStorage.setItem('hasSeenSplash', 'true');
-            }, 2000); // 2 seconds simple splash
-
-            return () => clearTimeout(timer);
+        // If already seen, hide IMMEDIATELY
+        if (hasSeenSplash) {
+            setShowSplash(false);
+            return;
         }
+
+        // Otherwise, it stays true, then hides after delay
+        const timer = setTimeout(() => {
+            setShowSplash(false);
+            sessionStorage.setItem('hasSeenSplash', 'true');
+        }, 2000); // 2 seconds simple splash
+
+        return () => clearTimeout(timer);
     }, []);
 
     if (!showSplash) return null;

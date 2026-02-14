@@ -14,6 +14,7 @@ import { analyticsRouter } from './routes/analytics';
 import { backtestRouter } from './routes/backtest';
 import stocksRouter from './routes/stocks';
 import { commodityRouter } from './routes/commodity';
+import { journalRouter } from './routes/journal';
 
 // Load environment variables
 dotenv.config();
@@ -67,6 +68,7 @@ app.use('/api/analytics', analyticsRouter);
 app.use('/api/backtest', backtestRouter);
 app.use('/api/stocks', stocksRouter);
 app.use('/api/analyze/commodity', commodityRouter);
+app.use('/api/journal', journalRouter);
 
 /**
  * Start Server
