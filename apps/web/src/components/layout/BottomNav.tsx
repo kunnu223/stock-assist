@@ -36,7 +36,7 @@ export function BottomNav() {
     ];
 
     return (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-t border-border pb-[env(safe-area-inset-bottom)]">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
             <div className="flex items-center justify-around h-16">
                 {navItems.map((item) => {
                     const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
@@ -47,8 +47,8 @@ export function BottomNav() {
                             key={item.href}
                             href={item.href}
                             className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all duration-200 ${isActive
-                                    ? "text-primary-500"
-                                    : "text-muted-foreground hover:text-foreground"
+                                ? "text-primary-500"
+                                : "text-muted-foreground hover:text-foreground"
                                 }`}
                         >
                             <div className={`relative p-1.5 rounded-xl transition-all duration-200 ${isActive ? "bg-primary-500/10 scale-110" : ""
