@@ -75,10 +75,14 @@ export default function JournalPage() {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-6 md:pb-10">
                 <div className="space-y-3 md:space-y-4">
-                    <h1 className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight text-foreground uppercase italic">
+                    <div className="hidden md:inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-500 text-[10px] font-black uppercase tracking-widest">
+                        <BookOpen size={12} />
+                        <span>PERSONAL NOTES</span>
+                    </div>
+                    <h1 className="text-3xl md:text-5xl font-bold text-foreground tracking-tight">
                         TRADING <span className="text-primary-500">JOURNAL</span>
                     </h1>
-                    <p className="text-lg text-muted-foreground font-medium max-w-2xl text-balance">
+                    <p className="text-muted-foreground font-medium max-w-xl text-sm md:text-base">
                         Record your thoughts, strategies, and market observations.
                     </p>
                 </div>
