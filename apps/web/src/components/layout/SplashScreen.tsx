@@ -7,9 +7,18 @@ export const SplashScreen = () => {
     const [isVisible, setIsVisible] = useState(true);
 
     useEffect(() => {
-        // Show splash for 2.5 seconds
+        // Check if splash has already been shown in this session
+        const hasSeenSplash = sessionStorage.getItem('hasSeenSplash');
+
+        if (hasSeenSplash) {
+            setIsVisible(false);
+            return;
+        }
+
+        // Show splash and mark as seen
         const timer = setTimeout(() => {
             setIsVisible(false);
+            sessionStorage.setItem('hasSeenSplash', 'true');
         }, 2500);
 
         return () => clearTimeout(timer);
