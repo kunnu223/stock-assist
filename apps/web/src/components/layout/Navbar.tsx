@@ -3,16 +3,18 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star, Gem } from 'lucide-react';
+import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star, Gem, Sun, Moon } from 'lucide-react';
 import { WatchlistPanel } from '../dashboard/WatchlistPanel';
 import { useWatchlist } from '@/context/WatchlistContext';
 
 import { useLanguage } from '@/context/LanguageContext';
+import { useTheme } from '@/context/ThemeContext';
 
 export function Navbar() {
     const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
     const { watchlist } = useWatchlist();
     const { language, setLanguage, t } = useLanguage();
+    const { theme, toggleTheme } = useTheme();
 
     const toggleLanguage = () => {
         setLanguage(language === 'en' ? 'hi' : 'en');
@@ -20,7 +22,7 @@ export function Navbar() {
 
     return (
         <>
-            <nav className="fixed top-0 left-0 right-0 z-[100] bg-black/95 backdrop-blur-xl">
+            <nav className="fixed top-0 left-0 right-0 z-[100] backdrop-blur-xl" style={{ background: 'var(--nav-bg)' }}>
                 <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-8">
                         <Link href="/" className="flex items-center gap-2 group">
@@ -47,6 +49,13 @@ export function Navbar() {
                             >
                                 {language === 'en' ? 'हिन्दी' : 'ENGLISH'}
                             </button>
+                            {/* <button
+                                onClick={toggleTheme}
+                                className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+                                title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                            >
+                                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                            </button> */}
                             <button
                                 onClick={() => setIsWatchlistOpen(true)}
                                 className="p-2 text-muted-foreground hover:text-amber-500 transition-colors relative"

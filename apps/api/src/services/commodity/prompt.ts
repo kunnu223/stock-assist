@@ -12,37 +12,65 @@ import type { PriceVolumeSignal, CommodityConfidenceResult } from './indicators'
 import type { CrashDetectionResult } from './crashDetection';
 
 export interface CommodityPromptInput {
-    commodity: CommodityPriceData;
-    dxy: DXYData;
-    indicators: TechnicalIndicators;
-    weeklyIndicators?: TechnicalIndicators;
-    seasonality: SeasonalityResult;
-    macro: MacroContext;
-    priceVolume: PriceVolumeSignal;
-    confidence: CommodityConfidenceResult;
-    crash: CrashDetectionResult;
-    newsHeadlines: string[];
-    language?: string;
+  commodity: CommodityPriceData;
+  dxy: DXYData;
+  indicators: TechnicalIndicators;
+  weeklyIndicators?: TechnicalIndicators;
+  seasonality: SeasonalityResult;
+  macro: MacroContext;
+  priceVolume: PriceVolumeSignal;
+  confidence: CommodityConfidenceResult;
+  crash: CrashDetectionResult;
+  newsHeadlines: string[];
+  language?: string;
+  exchange?: string;
+  exchangePricing?: {
+    currencySymbol: string;
+    currency: string;
+    unit: string;
+    price: number;
+    dayHigh: number;
+    dayLow: number;
+    support: number;
+    resistance: number;
+    atr: number;
+  };
 }
 
 /**
  * Build the commodity analysis prompt
  */
 export function buildCommodityPrompt(input: CommodityPromptInput): string {
-    const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines, language } = input;
+  const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines, language, exchange, exchangePricing } = input;
 
-    const langInstruction = language === 'hi'
-        ? 'IMPORTANT: Provide the response in HINDI language (Devanagari script) for all text fields (summary, reasoning, action, etc). Keep JSON keys in English.'
-        : '';
+  const langInstruction = language === 'hi'
+    ? 'IMPORTANT: Provide the response in HINDI language (Devanagari script) for all text fields (summary, reasoning, action, etc). Keep JSON keys in English.'
+    : '';
 
-    return `You are an expert commodity futures analyst. Analyze ${commodity.name} (${commodity.symbol}) and provide a structured multi-horizon trading plan.
+  // Determine currency context based on exchange
+  const isINR = exchange === 'MCX' || exchange === 'SPOT';
+  const cs = isINR && exchangePricing ? exchangePricing.currencySymbol : '$';
+  const price = isINR && exchangePricing ? exchangePricing.price : commodity.currentPrice;
+  const dayLow = isINR && exchangePricing ? exchangePricing.dayLow : commodity.dayLow;
+  const dayHigh = isINR && exchangePricing ? exchangePricing.dayHigh : commodity.dayHigh;
+  const support = isINR && exchangePricing ? exchangePricing.support : indicators.sr.support;
+  const resistance = isINR && exchangePricing ? exchangePricing.resistance : indicators.sr.resistance;
+  const atr = isINR && exchangePricing ? exchangePricing.atr : indicators.atr;
+  const unit = isINR && exchangePricing ? exchangePricing.unit : '';
+  const fmtPrice = (v: number) => isINR ? Math.round(v).toLocaleString('en-IN') : v.toFixed(2);
+
+  const exchangeInstruction = isINR
+    ? `\nIMPORTANT CURRENCY INSTRUCTION: The user is viewing this on ${exchange} (India). ALL price values in your response MUST be in INR (₹). Do NOT use dollar ($) amounts anywhere — not in text, not in price fields, not in reasoning. Use ₹ symbol for all prices. Unit: ${unit}.`
+    : '';
+
+  return `You are an expert commodity futures analyst. Analyze ${commodity.name} (${commodity.symbol}) and provide a structured multi-horizon trading plan.
 
 ${langInstruction}
+${exchangeInstruction}
 
-## CURRENT MARKET DATA
-- **Price**: $${commodity.currentPrice.toFixed(2)} (${commodity.changePercent >= 0 ? '+' : ''}${commodity.changePercent.toFixed(2)}%)
-- **Day Range**: $${commodity.dayLow.toFixed(2)} - $${commodity.dayHigh.toFixed(2)}
-- **Volume**: ${commodity.volume.toLocaleString()} contracts
+## CURRENT MARKET DATA (${exchange || 'COMEX'})
+- **Price**: ${cs}${fmtPrice(price)} (${commodity.changePercent >= 0 ? '+' : ''}${commodity.changePercent.toFixed(2)}%)
+- **Day Range**: ${cs}${fmtPrice(dayLow)} - ${cs}${fmtPrice(dayHigh)}
 - **Volume**: ${commodity.volume.toLocaleString()} contracts
 
 ## USD INDEX (DXY)
@@ -54,8 +82,8 @@ ${langInstruction}
 - **RSI(14)**: ${indicators.rsi.value.toFixed(1)} — ${indicators.rsi.interpretation}
 - **MACD**: ${indicators.macd.macd.toFixed(3)} / Signal: ${indicators.macd.signal.toFixed(3)} / Histogram: ${indicators.macd.histogram.toFixed(3)} — ${indicators.macd.trend}
 - **MA Trend**: ${indicators.ma.trend} (SMA20: ${indicators.ma.sma20.toFixed(2)}, SMA50: ${indicators.ma.sma50.toFixed(2)})
-- **S/R**: Support $${indicators.sr.support.toFixed(2)} | Resistance $${indicators.sr.resistance.toFixed(2)} | Pivot $${indicators.sr.pivot.toFixed(2)}
-- **ATR**: ${indicators.atr?.toFixed(2) || 'N/A'}
+- **S/R**: Support ${cs}${fmtPrice(support)} | Resistance ${cs}${fmtPrice(resistance)} | Pivot ${cs}${fmtPrice(indicators.sr.pivot)}
+- **ATR**: ${fmtPrice(atr)}
 - **Volume Trend**: ${indicators.volume.trend} (ratio: ${indicators.volume.ratio.toFixed(2)}x)
 ${weeklyIndicators ? `
 ## WEEKLY INDICATORS
@@ -105,6 +133,25 @@ CRITICAL RULES:
 6. If system confidence is ${confidence.score}%, your confidence should be within ±15 of it
 7. Stop losses MUST always be tighter than targets (risk/reward > 1.5)
 
+PLAN B RULES (MANDATORY — Loss Prevention):
+8. Every horizon MUST include a "planB" — what to do if the trade goes AGAINST you
+9. Plan B must define a step-by-step recovery strategy with exact price levels
+10. Include max acceptable loss amount and recovery timeline
+11. Plan B steps should escalate: first HOLD (if small dip), then AVERAGE (if moderate dip), then EXIT (if large dip)
+12. Reference ATR (${indicators.atr?.toFixed(2) || 'N/A'}) for realistic loss thresholds
+
+INDIA MARKET CONTEXT:
+- This commodity trades on Indian MCX (9:00 AM – 11:30 PM IST)
+- Indian traders care about gold/silver for festivals (Dhanteras, Diwali, Akshaya Tritiya)
+- MCX lot sizes matter for risk calculation
+- Consider USD/INR movement impact on Indian prices
+
+CONFIDENCE CALIBRATION:
+- If multiple indicators conflict, reduce confidence by 10-15%
+- If crash risk is HIGH/CRITICAL, max confidence should be 50%
+- If seasonality and technicals align, boost confidence by 5-10%
+- Never be more than 80% confident unless 4+ indicators agree
+
 Respond with this EXACT JSON structure:
 {
   "overallBias": "BULLISH" | "BEARISH" | "NEUTRAL",
@@ -119,7 +166,20 @@ Respond with this EXACT JSON structure:
     "stopLoss": <number>,
     "target": <number>,
     "risks": ["<risk1>", "<risk2>"],
-    "validity": "<time validity>"
+    "validity": "<time validity>",
+    "planB": {
+      "scenario": "<what happens if price moves against you, e.g. 'Price drops 3% after buying'>",
+      "action": "HOLD" | "AVERAGE_DOWN" | "EXIT" | "HEDGE",
+      "reasoning": "<why this Plan B is the right response>",
+      "recoveryTarget": <price at which you recover losses>,
+      "maxLoss": "<max acceptable loss, e.g. '2-3% of position'>",
+      "timeline": "<how long to wait for recovery>",
+      "steps": [
+        "<Step 1: what to do if drops 1-2%, e.g. 'Hold — normal volatility within ATR range'>",
+        "<Step 2: what to do if drops 3-5%, e.g. 'Add 25% more at $X to average down'>",
+        "<Step 3: what to do if drops 5%+, e.g. 'Exit at $X — max loss $Y'>"
+      ]
+    }
   },
   "tomorrow": {
     "action": "<conditional action>",
@@ -134,7 +194,16 @@ Respond with this EXACT JSON structure:
       }
     ],
     "watchLevels": [<level1>, <level2>, <level3>],
-    "newsToWatch": ["<event1>", "<event2>"]
+    "newsToWatch": ["<event1>", "<event2>"],
+    "planB": {
+      "scenario": "<what if yesterday's trade went wrong>",
+      "action": "HOLD" | "AVERAGE_DOWN" | "EXIT" | "REVERSE",
+      "reasoning": "<recovery logic for next day>",
+      "recoveryTarget": <number>,
+      "maxLoss": "<max loss tolerance>",
+      "timeline": "<recovery window>",
+      "steps": ["<step1>", "<step2>", "<step3>"]
+    }
   },
   "nextWeek": {
     "scenario": "BULLISH" | "BEARISH" | "RANGE_BOUND",
@@ -144,7 +213,16 @@ Respond with this EXACT JSON structure:
     "strategy": "<swing trade approach>",
     "keyEvents": [
       {"date": "<date>", "event": "<name>", "impact": "HIGH" | "MEDIUM" | "LOW"}
-    ]
+    ],
+    "planB": {
+      "scenario": "<what if weekly thesis breaks down>",
+      "action": "HOLD" | "REDUCE" | "EXIT" | "REVERSE",
+      "reasoning": "<strategic recovery for week-long position>",
+      "recoveryTarget": <number>,
+      "maxLoss": "<max weekly loss tolerance>",
+      "timeline": "<1-2 weeks>",
+      "steps": ["<step1>", "<step2>", "<step3>"]
+    }
   },
   "newsSentiment": "positive" | "negative" | "neutral"
 }`;

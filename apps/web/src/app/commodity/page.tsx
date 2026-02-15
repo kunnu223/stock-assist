@@ -34,16 +34,6 @@ const COMMODITIES: CommodityOption[] = [
 
 const EXCHANGES: ExchangeOption[] = [
     {
-        key: 'COMEX',
-        label: 'COMEX',
-        flag: '🇺🇸',
-        icon: <Globe size={16} />,
-        description: 'US Futures (USD)',
-        color: 'text-blue-400',
-        bgColor: 'bg-blue-500/10',
-        borderColor: 'border-blue-500/30',
-    },
-    {
         key: 'MCX',
         label: 'MCX',
         flag: '🇮🇳',
@@ -52,6 +42,16 @@ const EXCHANGES: ExchangeOption[] = [
         color: 'text-orange-400',
         bgColor: 'bg-orange-500/10',
         borderColor: 'border-orange-500/30',
+    },
+    {
+        key: 'COMEX',
+        label: 'COMEX',
+        flag: '🇺🇸',
+        icon: <Globe size={16} />,
+        description: 'US Futures (USD)',
+        color: 'text-blue-400',
+        bgColor: 'bg-blue-500/10',
+        borderColor: 'border-blue-500/30',
     },
     {
         key: 'SPOT',
@@ -65,12 +65,53 @@ const EXCHANGES: ExchangeOption[] = [
     },
 ];
 
+/**
+ * Check if MCX is currently open.
+ * MCX hours: Monday–Friday, 9:00 AM – 11:30 PM IST
+ * (some commodities close at 11:55 PM, we use 11:30 PM as safe default)
+ */
+function isMCXOpen(): { isOpen: boolean; nextEvent: string } {
+    const now = new Date();
+    // Convert to IST (UTC+5:30)
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const ist = new Date(now.getTime() + istOffset + now.getTimezoneOffset() * 60 * 1000);
+    const day = ist.getDay(); // 0=Sun, 6=Sat
+    const hours = ist.getHours();
+    const minutes = ist.getMinutes();
+    const timeInMinutes = hours * 60 + minutes;
+
+    const OPEN = 9 * 60;       // 9:00 AM IST
+    const CLOSE = 23 * 60 + 30; // 11:30 PM IST
+
+    if (day === 0 || day === 6) {
+        return { isOpen: false, nextEvent: 'Opens Monday 9:00 AM IST' };
+    }
+
+    if (timeInMinutes >= OPEN && timeInMinutes < CLOSE) {
+        const remainingMin = CLOSE - timeInMinutes;
+        const h = Math.floor(remainingMin / 60);
+        const m = remainingMin % 60;
+        return { isOpen: true, nextEvent: `Closes in ${h}h ${m}m` };
+    }
+
+    if (timeInMinutes < OPEN) {
+        const waitMin = OPEN - timeInMinutes;
+        const h = Math.floor(waitMin / 60);
+        const m = waitMin % 60;
+        return { isOpen: false, nextEvent: `Opens in ${h}h ${m}m` };
+    }
+
+    // After close
+    return { isOpen: false, nextEvent: 'Opens tomorrow 9:00 AM IST' };
+}
+
 import { useLanguage } from '@/context/LanguageContext';
 import { translations } from '@/utils/translations';
 
 export default function CommodityPage() {
     const [selectedCommodity, setSelectedCommodity] = useState<string | null>(null);
     const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
+    const mcxStatus = isMCXOpen();
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<any | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -208,11 +249,22 @@ export default function CommodityPage() {
             {/* ── Step 2: Exchange Selector (shown after commodity selection) ── */}
             {selectedCommodity && (
                 <div ref={exchangeSectionRef} className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[9px] font-black">2</span>
-                        {t('commodity.step2')} <span className={activeCommodity?.color}>
-                            {activeCommodity ? (language === 'hi' ? (translations.commodity.items as any)[activeCommodity.key]?.hi || activeCommodity.name : activeCommodity.name) : ''}
-                        </span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[9px] font-black">2</span>
+                            {t('commodity.step2')} <span className={activeCommodity?.color}>
+                                {activeCommodity ? (language === 'hi' ? (translations.commodity.items as any)[activeCommodity.key]?.hi || activeCommodity.name : activeCommodity.name) : ''}
+                            </span>
+                        </div>
+                        {/* MCX Market Hours Indicator */}
+                        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${mcxStatus.isOpen
+                                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                : 'text-rose-400 bg-rose-500/10 border-rose-500/20'
+                            }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${mcxStatus.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                            MCX {mcxStatus.isOpen ? 'OPEN' : 'CLOSED'}
+                            <span className="text-muted-foreground font-bold">• {mcxStatus.nextEvent}</span>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {EXCHANGES.map((exchange) => {

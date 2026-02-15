@@ -7,6 +7,9 @@ import {
     Zap, Activity, ArrowUpRight, ArrowDownRight, Minus,
     ShieldAlert, ShieldCheck, CircleDot, ArrowUp, ArrowDown
 } from 'lucide-react';
+import { CollapsibleSection } from '@/components/ui/CollapsibleSection';
+import { PlanBCard } from './PlanBCard';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface CommodityResultProps {
     data: any;
@@ -15,6 +18,7 @@ interface CommodityResultProps {
 
 export function CommodityResult({ data, accentColor }: CommodityResultProps) {
     const [horizon, setHorizon] = useState<'today' | 'tomorrow' | 'nextWeek'>('today');
+    const { t } = useLanguage();
 
     const isPositive = data.changePercent >= 0;
     const isBullish = data.direction === 'BULLISH';
@@ -131,8 +135,8 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                                     <Target size={16} className="text-amber-400" />
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Multi-Horizon Plan</h3>
-                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Intelligent Trading Actions</p>
+                                    <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">{t('commodityResult.multiHorizonPlan')}</h3>
+                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{t('commodityResult.intelligentActions')}</p>
                                 </div>
                             </div>
                             <div className="flex gap-1 bg-zinc-900 rounded-lg p-1 overflow-x-auto no-scrollbar">
@@ -145,7 +149,7 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                                             : 'text-muted-foreground hover:text-foreground'
                                             }`}
                                     >
-                                        {h === 'today' ? '📍 Today' : h === 'tomorrow' ? '📅 Tomorrow' : '📆 Next Week'}
+                                        {h === 'today' ? `📍 ${t('commodityResult.today')}` : h === 'tomorrow' ? `📅 ${t('commodityResult.tomorrow')}` : `📆 ${t('commodityResult.nextWeek')}`}
                                     </button>
                                 ))}
                             </div>
@@ -165,20 +169,14 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                     </div>
                 </div>
 
-                {/* ── Macro Context ── */}
-                <div className="premium-card rounded-xl bg-zinc-950/50 border-border">
-                    <div className="p-6 border-b border-border">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                                <DollarSign size={16} className="text-blue-400" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Macro Context</h3>
-                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">USD / Correlations</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-6 space-y-5">
+                {/* ── Macro Context (Collapsible) ── */}
+                <CollapsibleSection
+                    title={t('commodityResult.macroContext')}
+                    subtitle={t('commodityResult.usdCorrelations')}
+                    icon={<DollarSign size={16} className="text-blue-400" />}
+                    iconBg="bg-blue-500/10"
+                >
+                    <div className="space-y-5 pt-4">
                         {/* USD */}
                         <div className="flex items-center justify-between">
                             <div>
@@ -226,31 +224,25 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                             </span>
                         </div>
                     </div>
-                </div>
+                </CollapsibleSection>
 
-                {/* ── Crash Detection ── */}
-                <div className="premium-card rounded-xl bg-zinc-950/50 border-border">
-                    <div className="p-6 border-b border-border">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
-                                    <ShieldAlert size={16} className="text-rose-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Crash Detection</h3>
-                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">4-Signal System</p>
-                                </div>
-                            </div>
-                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${getRiskColor(data.crashDetection?.overallRisk)}`}>
-                                {data.crashDetection?.overallRisk || 'LOW'} RISK
-                            </span>
-                        </div>
-                    </div>
-                    <div className="p-6 space-y-4">
+                {/* ── Crash Detection (Collapsible) ── */}
+                <CollapsibleSection
+                    title={t('commodityResult.crashDetection')}
+                    subtitle={t('commodityResult.fourSignalSystem')}
+                    icon={<ShieldAlert size={16} className="text-rose-400" />}
+                    iconBg="bg-rose-500/10"
+                    badge={
+                        <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${getRiskColor(data.crashDetection?.overallRisk)}`}>
+                            {data.crashDetection?.overallRisk || 'LOW'} RISK
+                        </span>
+                    }
+                >
+                    <div className="space-y-4 pt-4">
                         {/* Risk Probability Bar */}
                         <div>
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Crash Probability</span>
+                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{t('commodityResult.crashProbability')}</span>
                                 <span className="text-sm font-bold text-foreground">{data.crashDetection?.probability || 0}%</span>
                             </div>
                             <div className="w-full bg-zinc-900 rounded-full h-2 overflow-hidden">
@@ -288,26 +280,20 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                             <p key={i} className="text-xs text-muted-foreground font-medium leading-relaxed">{rec}</p>
                         ))}
                     </div>
-                </div>
+                </CollapsibleSection>
 
-                {/* ── Seasonality ── */}
-                <div className="premium-card rounded-xl bg-zinc-950/50 border-border">
-                    <div className="p-6 border-b border-border">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                                <Calendar size={16} className="text-violet-400" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Seasonality</h3>
-                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Historical Patterns</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-6 space-y-5">
+                {/* ── Seasonality (Collapsible) ── */}
+                <CollapsibleSection
+                    title={t('commodityResult.seasonality')}
+                    subtitle={t('commodityResult.historicalPatterns')}
+                    icon={<Calendar size={16} className="text-violet-400" />}
+                    iconBg="bg-violet-500/10"
+                >
+                    <div className="space-y-5 pt-4">
                         {/* Current Month */}
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current Month</p>
+                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{t('commodityResult.currentMonth')}</p>
                                 <p className="text-lg font-bold text-foreground">{data.commodityIndicators?.seasonality?.currentMonth}</p>
                             </div>
                             <div className="flex items-center gap-3">
@@ -322,7 +308,7 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                         {/* Next Month */}
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Next Month</p>
+                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{t('commodityResult.nextMonth')}</p>
                                 <p className="text-sm font-bold text-foreground">{data.commodityIndicators?.seasonality?.nextMonth}</p>
                             </div>
                             <BiasTag bias={data.commodityIndicators?.seasonality?.nextMonthBias} />
@@ -332,26 +318,20 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
 
                         {/* Quarter Outlook */}
                         <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Quarter Outlook</span>
+                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{t('commodityResult.quarterOutlook')}</span>
                             <BiasTag bias={data.commodityIndicators?.seasonality?.quarterOutlook} />
                         </div>
                     </div>
-                </div>
+                </CollapsibleSection>
 
-                {/* ── Confidence Breakdown ── */}
-                <div className="premium-card rounded-xl bg-zinc-950/50 border-border">
-                    <div className="p-6 border-b border-border">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
-                                <BarChart2 size={16} className="text-cyan-400" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Confidence Breakdown</h3>
-                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">5-Factor Analysis</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-6 space-y-4">
+                {/* ── Confidence Breakdown (Collapsible) ── */}
+                <CollapsibleSection
+                    title={t('commodityResult.confidenceBreakdown')}
+                    subtitle={t('commodityResult.fiveFactorAnalysis')}
+                    icon={<BarChart2 size={16} className="text-cyan-400" />}
+                    iconBg="bg-cyan-500/10"
+                >
+                    <div className="space-y-4 pt-4">
                         {[
                             { label: 'Technical', value: data.commodityIndicators?.confidenceBreakdown?.technical, color: 'bg-blue-500' },
                             { label: 'Seasonality', value: data.commodityIndicators?.confidenceBreakdown?.seasonality, color: 'bg-violet-500' },
@@ -376,7 +356,7 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                         {/* Key Factors */}
                         {data.commodityIndicators?.factors && (
                             <div className="mt-4 pt-4 border-t border-border space-y-2">
-                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Key Factors</p>
+                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{t('commodityResult.keyFactors')}</p>
                                 {data.commodityIndicators.factors.slice(0, 6).map((factor: string, i: number) => (
                                     <div key={i} className="flex items-start gap-2">
                                         <ChevronRight size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
@@ -386,22 +366,17 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                             </div>
                         )}
                     </div>
-                </div>
+                </CollapsibleSection>
 
-                {/* ── Technicals Summary ── */}
-                <div className="premium-card rounded-xl bg-zinc-950/50 border-border lg:col-span-2">
-                    <div className="p-6 border-b border-border">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                                <Activity size={16} className="text-amber-400" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Technical Summary</h3>
-                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{data.metadata?.dataPoints || 0} data points analyzed</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-6">
+                {/* ── Technicals Summary (Collapsible) ── */}
+                <CollapsibleSection
+                    title={t('commodityResult.technicalSummary')}
+                    subtitle={`${data.metadata?.dataPoints || 0} ${t('commodityResult.dataPointsAnalyzed')}`}
+                    icon={<Activity size={16} className="text-amber-400" />}
+                    iconBg="bg-amber-500/10"
+                    fullWidth
+                >
+                    <div className="pt-4">
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             <MetricBox label="RSI (14)" value={data.technicals?.rsi?.toFixed(1) || '—'} sub={data.technicals?.rsiInterpretation} />
                             <MetricBox label="MACD Trend" value={data.technicals?.macdTrend || '—'} />
@@ -411,7 +386,7 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                             <MetricBox label="ATR" value={`${curr}${isINR ? Math.round(data.technicals?.atr).toLocaleString('en-IN') : data.technicals?.atr?.toFixed(2) || '—'}`} sub={data.technicals?.volumeTrend} />
                         </div>
                     </div>
-                </div>
+                </CollapsibleSection>
             </div>
 
             {/* ── Metadata Footer ── */}
@@ -535,6 +510,13 @@ function HorizonToday({ plan, curr, isINR }: { plan: any; curr: string; isINR: b
                     </div>
                 )}
             </div>
+
+            {/* Plan B */}
+            {plan.planB && (
+                <div className="md:col-span-3">
+                    <PlanBCard planB={plan.planB} curr={curr} isINR={isINR} />
+                </div>
+            )}
         </div>
     );
 }
@@ -593,6 +575,11 @@ function HorizonTomorrow({ plan, curr, isINR }: { plan: any; curr: string; isINR
                     </div>
                 </div>
             )}
+
+            {/* Plan B */}
+            {plan.planB && (
+                <PlanBCard planB={plan.planB} curr={curr} isINR={isINR} />
+            )}
         </div>
     );
 }
@@ -649,6 +636,11 @@ function HorizonNextWeek({ plan, curr, isINR }: { plan: any; curr: string; isINR
                         ))}
                     </div>
                 </div>
+            )}
+
+            {/* Plan B */}
+            {plan.planB && (
+                <PlanBCard planB={plan.planB} curr={curr} isINR={isINR} />
             )}
         </div>
     );

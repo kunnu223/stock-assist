@@ -229,5 +229,247 @@ export const translations = {
             en: 'Reset To Defaults',
             hi: 'डिफ़ॉल्ट पर रीसेट करें'
         }
+    },
+    commodityResult: {
+        multiHorizonPlan: {
+            en: 'Multi-Horizon Plan',
+            hi: 'बहु-क्षितिज योजना'
+        },
+        intelligentActions: {
+            en: 'Intelligent Trading Actions',
+            hi: 'बुद्धिमान ट्रेडिंग कार्रवाई'
+        },
+        today: {
+            en: 'Today',
+            hi: 'आज'
+        },
+        tomorrow: {
+            en: 'Tomorrow',
+            hi: 'कल'
+        },
+        nextWeek: {
+            en: 'Next Week',
+            hi: 'अगला सप्ताह'
+        },
+        macroContext: {
+            en: 'Macro Context',
+            hi: 'मैक्रो संदर्भ'
+        },
+        usdCorrelations: {
+            en: 'USD / Correlations',
+            hi: 'USD / सहसंबंध'
+        },
+        crashDetection: {
+            en: 'Crash Detection',
+            hi: 'क्रैश पहचान'
+        },
+        fourSignalSystem: {
+            en: '4-Signal System',
+            hi: '4-सिग्नल सिस्टम'
+        },
+        crashProbability: {
+            en: 'Crash Probability',
+            hi: 'क्रैश संभावना'
+        },
+        seasonality: {
+            en: 'Seasonality',
+            hi: 'मौसमी रुझान'
+        },
+        historicalPatterns: {
+            en: 'Historical Patterns',
+            hi: 'ऐतिहासिक पैटर्न'
+        },
+        currentMonth: {
+            en: 'Current Month',
+            hi: 'वर्तमान माह'
+        },
+        nextMonth: {
+            en: 'Next Month',
+            hi: 'अगला माह'
+        },
+        quarterOutlook: {
+            en: 'Quarter Outlook',
+            hi: 'तिमाही दृष्टिकोण'
+        },
+        confidenceBreakdown: {
+            en: 'Confidence Breakdown',
+            hi: 'आत्मविश्वास विश्लेषण'
+        },
+        fiveFactorAnalysis: {
+            en: '5-Factor Analysis',
+            hi: '5-कारक विश्लेषण'
+        },
+        technicalSummary: {
+            en: 'Technical Summary',
+            hi: 'तकनीकी सारांश'
+        },
+        dataPointsAnalyzed: {
+            en: 'data points analyzed',
+            hi: 'डेटा बिंदुओं का विश्लेषण'
+        },
+        keyFactors: {
+            en: 'Key Factors',
+            hi: 'मुख्य कारक'
+        },
+        overallMacroBias: {
+            en: 'Overall Macro Bias',
+            hi: 'समग्र मैक्रो रुझान'
+        },
+        action: {
+            en: 'Action',
+            hi: 'कार्रवाई'
+        },
+        urgency: {
+            en: 'Urgency',
+            hi: 'तत्परता'
+        },
+        confidence: {
+            en: 'Confidence',
+            hi: 'आत्मविश्वास'
+        },
+        priceLevels: {
+            en: 'Price Levels',
+            hi: 'मूल्य स्तर'
+        },
+        entry: {
+            en: 'Entry',
+            hi: 'प्रवेश'
+        },
+        stopLoss: {
+            en: 'Stop Loss',
+            hi: 'स्टॉप लॉस'
+        },
+        target: {
+            en: 'Target',
+            hi: 'लक्ष्य'
+        },
+        reasoning: {
+            en: 'Reasoning',
+            hi: 'तर्क'
+        },
+        risks: {
+            en: 'Risks',
+            hi: 'जोखिम'
+        },
+        watchLevels: {
+            en: 'Watch Levels',
+            hi: 'निगरानी स्तर'
+        },
+        eventsToMonitor: {
+            en: 'Events to Monitor',
+            hi: 'निगरानी अनुसूची'
+        },
+        targetRange: {
+            en: 'Target Range',
+            hi: 'लक्ष्य सीमा'
+        },
+        strategy: {
+            en: 'Strategy',
+            hi: 'रणनीति'
+        },
+        keyEvents: {
+            en: 'Key Events',
+            hi: 'प्रमुख घटनाएं'
+        }
+    },
+    planB: {
+        title: {
+            en: 'Plan B — Loss Prevention',
+            hi: 'प्लान B — हानि रोकथाम'
+        },
+        ifThisHappens: {
+            en: 'If This Happens',
+            hi: 'अगर ये होता है'
+        },
+        recoverySteps: {
+            en: 'Recovery Steps',
+            hi: 'रिकवरी चरण'
+        },
+        recovery: {
+            en: 'Recovery',
+            hi: 'रिकवरी'
+        },
+        maxLoss: {
+            en: 'Max Loss',
+            hi: 'अधिकतम हानि'
+        },
+        timeline: {
+            en: 'Timeline',
+            hi: 'समय सीमा'
+        },
+        holdPosition: {
+            en: 'Hold Position',
+            hi: 'पोजीशन होल्ड करें'
+        },
+        averageDown: {
+            en: 'Average Down',
+            hi: 'एवरेज डाउन'
+        },
+        exitTrade: {
+            en: 'Exit Trade',
+            hi: 'ट्रेड बंद करें'
+        },
+        hedgePosition: {
+            en: 'Hedge Position',
+            hi: 'हेज करें'
+        },
+        reverseTrade: {
+            en: 'Reverse Trade',
+            hi: 'उलटा ट्रेड'
+        },
+        reduceSize: {
+            en: 'Reduce Size',
+            hi: 'साइज़ कम करें'
+        }
+    },
+    theme: {
+        light: {
+            en: 'Light Mode',
+            hi: 'लाइट मोड'
+        },
+        dark: {
+            en: 'Dark Mode',
+            hi: 'डार्क मोड'
+        }
+    },
+    mcx: {
+        open: {
+            en: 'OPEN',
+            hi: 'खुला'
+        },
+        closed: {
+            en: 'CLOSED',
+            hi: 'बंद'
+        },
+        opensMonday: {
+            en: 'Opens Monday 9:00 AM IST',
+            hi: 'सोमवार सुबह 9:00 IST को खुलेगा'
+        },
+        opensTomorrow: {
+            en: 'Opens tomorrow 9:00 AM IST',
+            hi: 'कल सुबह 9:00 IST को खुलेगा'
+        }
+    },
+    dashboard: {
+        title: {
+            en: 'Trading',
+            hi: 'ट्रेडिंग'
+        },
+        subtitle: {
+            en: 'Dashboard',
+            hi: 'डैशबोर्ड'
+        },
+        topStocks: {
+            en: 'Top Stocks',
+            hi: 'शीर्ष स्टॉक्स'
+        },
+        refresh: {
+            en: 'Refresh',
+            hi: 'रीफ्रेश'
+        },
+        lastUpdated: {
+            en: 'Last Updated',
+            hi: 'अंतिम अपडेट'
+        }
     }
 };

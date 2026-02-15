@@ -67,13 +67,13 @@ const MCX_CONFIGS: Record<string, MCXConversionConfig> = {
     GOLD: {
         unit: '₹/10g',
         conversionFactor: 10 / 31.1035,  // troy oz → 10 grams
-        dutyMultiplier: 1.155,            // ~12.5% import duty + 3% GST (2024 rates after budget cut)
+        dutyMultiplier: 1.065,            // ~6% import duty + 0.5% cess (post July 2024 budget cut)
         spotDiscountPercent: -0.3,        // Spot usually at slight premium in India
     },
     SILVER: {
         unit: '₹/kg',
         conversionFactor: 1000 / 31.1035, // troy oz → kg
-        dutyMultiplier: 1.155,
+        dutyMultiplier: 1.07,             // ~6% duty + 1% cess (post July 2024 budget cut)
         spotDiscountPercent: -0.5,
     },
     CRUDEOIL: {
@@ -91,7 +91,7 @@ const MCX_CONFIGS: Record<string, MCXConversionConfig> = {
     COPPER: {
         unit: '₹/kg',
         conversionFactor: 2.20462,        // lb → kg
-        dutyMultiplier: 1.08,             // Lower duty on base metals
+        dutyMultiplier: 1.06,             // Lower duty on base metals (post 2024)
         spotDiscountPercent: 0.5,
     },
 };
@@ -288,6 +288,9 @@ export async function convertPlanPrices(
         }
         if (typeof converted.today.stopLoss === 'number') converted.today.stopLoss = conv(converted.today.stopLoss);
         if (typeof converted.today.target === 'number') converted.today.target = conv(converted.today.target);
+        if (converted.today.planB && typeof converted.today.planB.recoveryTarget === 'number') {
+            converted.today.planB.recoveryTarget = conv(converted.today.planB.recoveryTarget);
+        }
     }
 
     // Convert tomorrow
@@ -301,10 +304,16 @@ export async function convertPlanPrices(
             converted.tomorrow.watchLevels = converted.tomorrow.watchLevels.map(conv);
         }
     }
+    if (converted.tomorrow?.planB && typeof converted.tomorrow.planB.recoveryTarget === 'number') {
+        converted.tomorrow.planB.recoveryTarget = conv(converted.tomorrow.planB.recoveryTarget);
+    }
 
     // Convert next week
     if (converted.nextWeek?.targetRange && Array.isArray(converted.nextWeek.targetRange)) {
         converted.nextWeek.targetRange = converted.nextWeek.targetRange.map(conv);
+    }
+    if (converted.nextWeek?.planB && typeof converted.nextWeek.planB.recoveryTarget === 'number') {
+        converted.nextWeek.planB.recoveryTarget = conv(converted.nextWeek.planB.recoveryTarget);
     }
 
     return converted;

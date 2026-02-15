@@ -144,7 +144,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
                             { role: 'user', content: promptText },
                         ],
                         temperature: 0.25,
-                        max_tokens: 3000,
+                        max_tokens: 4500,
                     });
                     const text = completion.choices[0]?.message?.content;
                     if (text) {
@@ -256,28 +256,8 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     );
     console.log(`[Commodity] Confidence: ${confidence.score}% | Direction: ${confidence.direction} | Rec: ${confidence.recommendation}`);
 
-    // ── Stage 6: AI Multi-Horizon Analysis ──
-    console.log(`[Commodity] 🤖 Stage 6: AI multi-horizon analysis...`);
-    const newsHeadlines = (newsResult.latestHeadlines || []).slice(0, 5);
-    const promptInput: CommodityPromptInput = {
-        commodity: dataBundle.commodity,
-        dxy: dataBundle.dxy,
-        indicators,
-        weeklyIndicators,
-        seasonality,
-        macro,
-        priceVolume,
-        confidence,
-        crash,
-        newsHeadlines,
-        language,
-    };
-
-    const promptText = buildCommodityPrompt(promptInput);
-    const { result: aiResult, model: aiModel } = await runCommodityAI(promptText);
-
-    // ── Stage 7: Exchange Pricing ──
-    console.log(`[Commodity] 💱 Stage 7: Exchange pricing (${exchangeInfo.label})...`);
+    // ── Stage 6: Exchange Pricing (moved before AI so prompt gets correct currency) ──
+    console.log(`[Commodity] 💱 Stage 6: Exchange pricing (${exchangeInfo.label})...`);
     const exchangePricing = await buildExchangePricing(
         key, exchange,
         {
@@ -294,15 +274,73 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         }
     );
 
-    // Convert multi-horizon plan prices if needed
-    const convertedPlan = await convertPlanPrices(
-        {
-            today: aiResult?.today || buildFallbackToday(confidence, indicators, dataBundle.commodity),
-            tomorrow: aiResult?.tomorrow || buildFallbackTomorrow(confidence, indicators, dataBundle.commodity),
-            nextWeek: aiResult?.nextWeek || buildFallbackNextWeek(confidence, seasonality),
-        },
-        key, exchange
-    );
+    // ── Stage 7: AI Multi-Horizon Analysis ──
+    console.log(`[Commodity] 🤖 Stage 7: AI multi-horizon analysis...`);
+    const newsHeadlines = (newsResult.latestHeadlines || []).slice(0, 5);
+    const promptInput: CommodityPromptInput = {
+        commodity: dataBundle.commodity,
+        dxy: dataBundle.dxy,
+        indicators,
+        weeklyIndicators,
+        seasonality,
+        macro,
+        priceVolume,
+        confidence,
+        crash,
+        newsHeadlines,
+        language,
+        exchange,
+        exchangePricing: exchange !== 'COMEX' ? {
+            currencySymbol: exchangePricing.currencySymbol,
+            currency: exchangePricing.currency,
+            unit: exchangePricing.unit,
+            price: exchangePricing.price,
+            dayHigh: exchangePricing.dayHigh,
+            dayLow: exchangePricing.dayLow,
+            support: exchangePricing.support,
+            resistance: exchangePricing.resistance,
+            atr: exchangePricing.atr,
+        } : undefined,
+    };
+
+    const promptText = buildCommodityPrompt(promptInput);
+    const { result: aiResult, model: aiModel } = await runCommodityAI(promptText);
+
+    // Build the multi-horizon plan
+    const fallbackToday = buildFallbackToday(confidence, indicators, dataBundle.commodity);
+    const fallbackTomorrow = buildFallbackTomorrow(confidence, indicators, dataBundle.commodity);
+    const fallbackNextWeek = buildFallbackNextWeek(confidence, seasonality);
+
+    // Fill nextWeek targetRange from actual data
+    const price = dataBundle.commodity.currentPrice;
+    const atr = indicators.atr || price * 0.015;
+    if (fallbackNextWeek.targetRange[0] === 0) {
+        fallbackNextWeek.targetRange = [
+            Math.round((price - atr * 3) * 100) / 100,
+            Math.round((price + atr * 3) * 100) / 100,
+        ];
+    }
+    if (fallbackNextWeek.planB.recoveryTarget === 0) {
+        fallbackNextWeek.planB.recoveryTarget = Math.round(price * 100) / 100;
+    }
+
+    const usedAiToday = !!aiResult?.today;
+    const usedAiTomorrow = !!aiResult?.tomorrow;
+    const usedAiNextWeek = !!aiResult?.nextWeek;
+
+    const rawPlan = {
+        today: aiResult?.today || fallbackToday,
+        tomorrow: aiResult?.tomorrow || fallbackTomorrow,
+        nextWeek: aiResult?.nextWeek || fallbackNextWeek,
+    };
+
+    // Convert prices for non-COMEX exchanges:
+    // - If AI responded: AI already gave prices in the target currency (we fed it INR data), skip conversion
+    // - If fallback: Prices are in USD (from COMEX data), need conversion
+    const needsConversion = exchange !== 'COMEX' && (!usedAiToday || !usedAiTomorrow || !usedAiNextWeek);
+    const convertedPlan = needsConversion
+        ? await convertPlanPrices(rawPlan, key, exchange)
+        : rawPlan;
 
     // ── Stage 8: Response Assembly ──
     const elapsed = Date.now() - startTime;
@@ -393,23 +431,47 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     };
 }
 
-// ── Fallback generators (when AI fails) ──
-
 function buildFallbackToday(
     confidence: CommodityConfidenceResult,
     indicators: any,
     commodity: CommodityPriceData
 ) {
+    const price = commodity.currentPrice;
+    const atr = indicators.atr || price * 0.015;
+    const isBullish = confidence.direction === 'BULLISH';
+
+    // ATR-based realistic levels (risk:reward = 1:2 minimum)
+    const entryLow = price - atr * 0.15;
+    const entryHigh = price + atr * 0.15;
+    const stopLoss = isBullish ? price - atr * 1.0 : price + atr * 1.0;
+    const target = isBullish ? price + atr * 2.0 : price - atr * 2.0;
+
+    const rsiVal = indicators.rsi?.value?.toFixed(0) || '50';
+    const maTrend = indicators.ma?.trend || 'Neutral';
+
     return {
         action: confidence.recommendation,
-        reasoning: `${commodity.name} at $${commodity.currentPrice.toFixed(2)}. RSI ${indicators.rsi.value.toFixed(0)}, ${indicators.ma.trend} MA trend.`,
+        reasoning: `${commodity.name} current price at key level. RSI ${rsiVal} (${indicators.rsi?.interpretation || 'neutral'}), ${maTrend} MA trend. System confidence ${confidence.score}%.`,
         confidence: confidence.score,
         urgency: confidence.score >= 75 ? 'ACT_NOW' : confidence.score >= 55 ? 'MONITOR' : 'WAIT',
-        entry: [commodity.currentPrice * 0.998, commodity.currentPrice * 1.002],
-        stopLoss: indicators.sr.support,
-        target: indicators.sr.resistance,
-        risks: ['AI analysis unavailable — use technical levels only'],
+        entry: [Math.round(entryLow * 100) / 100, Math.round(entryHigh * 100) / 100],
+        stopLoss: Math.round(stopLoss * 100) / 100,
+        target: Math.round(target * 100) / 100,
+        risks: ['AI analysis unavailable — fallback levels based on technicals only'],
         validity: 'Until market close',
+        planB: {
+            scenario: `Price moves ${(atr / price * 100).toFixed(1)}% against position (1 ATR)`,
+            action: 'HOLD',
+            reasoning: 'Within normal ATR volatility range — hold unless key support/resistance breaks',
+            recoveryTarget: Math.round(price * 100) / 100,
+            maxLoss: `${(atr * 1.5 / price * 100).toFixed(1)}% of position`,
+            timeline: '1-2 trading sessions',
+            steps: [
+                `If drops < ${(atr * 0.5 / price * 100).toFixed(1)}%: Hold — normal intraday volatility`,
+                `If drops ${(atr * 0.5 / price * 100).toFixed(1)}-${(atr / price * 100).toFixed(1)}%: Tighten stop to entry level`,
+                `If drops > ${(atr * 1.5 / price * 100).toFixed(1)}%: Exit immediately — max loss reached`,
+            ],
+        },
     };
 }
 
@@ -418,18 +480,45 @@ function buildFallbackTomorrow(
     indicators: any,
     commodity: CommodityPriceData
 ) {
+    const price = commodity.currentPrice;
+    const atr = indicators.atr || price * 0.015;
+    const isBullish = confidence.direction === 'BULLISH';
+
+    const triggerLevel = isBullish ? price + atr * 0.3 : price - atr * 0.3;
+    const entryLow = price - atr * 0.2;
+    const entryHigh = price + atr * 0.2;
+    const stopLoss = isBullish ? price - atr * 1.2 : price + atr * 1.2;
+    const target = isBullish ? price + atr * 2.5 : price - atr * 2.5;
+
     return {
         action: `${confidence.recommendation} (if confirmed)`,
         confidence: Math.max(20, confidence.score - 10),
         conditions: [{
-            trigger: `Price ${confidence.direction === 'BULLISH' ? 'above' : 'below'} $${indicators.sr.resistance.toFixed(2)} with volume`,
+            trigger: `Price ${isBullish ? 'sustains above' : 'breaks below'} ${Math.round(triggerLevel * 100) / 100} with volume`,
             action: confidence.recommendation,
-            entry: [commodity.currentPrice * 0.995, commodity.currentPrice * 1.005],
-            stopLoss: indicators.sr.support,
-            target: indicators.sr.resistance * 1.01,
+            entry: [Math.round(entryLow * 100) / 100, Math.round(entryHigh * 100) / 100],
+            stopLoss: Math.round(stopLoss * 100) / 100,
+            target: Math.round(target * 100) / 100,
         }],
-        watchLevels: [indicators.sr.support, indicators.sr.pivot, indicators.sr.resistance],
+        watchLevels: [
+            Math.round((price - atr) * 100) / 100,
+            Math.round(price * 100) / 100,
+            Math.round((price + atr) * 100) / 100,
+        ],
         newsToWatch: ['Economic data releases', 'USD/DXY movement'],
+        planB: {
+            scenario: 'Previous trade moved against you overnight',
+            action: 'EXIT',
+            reasoning: 'If today\'s thesis failed, cut losses early on next session open',
+            recoveryTarget: Math.round(price * 100) / 100,
+            maxLoss: `${(atr * 1.5 / price * 100).toFixed(1)}% of position`,
+            timeline: 'First 30 minutes of trading session',
+            steps: [
+                'On open: Check if price gapped against your position',
+                `If within ${(atr * 0.5 / price * 100).toFixed(1)}% of entry: Hold with tighter stop`,
+                `If beyond ${(atr * 1.5 / price * 100).toFixed(1)}%: Exit on first retracement`,
+            ],
+        },
     };
 }
 
@@ -437,13 +526,28 @@ function buildFallbackNextWeek(
     confidence: CommodityConfidenceResult,
     seasonality: SeasonalityResult
 ) {
+    // Estimate some price levels from confidence
+    // We don't have price here, so keep generic
     return {
         scenario: confidence.direction === 'BULLISH' ? 'BULLISH' : confidence.direction === 'BEARISH' ? 'BEARISH' : 'RANGE_BOUND',
         probability: Math.max(50, confidence.score - 5),
-        reasoning: `System confidence at ${confidence.score}%. ${seasonality.currentMonth.monthName} seasonality: ${seasonality.currentMonth.bias}.`,
-        targetRange: [0, 0],
-        strategy: confidence.recommendation === 'BUY' ? 'Buy dips to support' : confidence.recommendation === 'SELL' ? 'Sell rallies to resistance' : 'Range trade between S/R',
+        reasoning: `System confidence at ${confidence.score}%. ${seasonality.currentMonth.monthName} seasonality: ${seasonality.currentMonth.bias}. ${seasonality.currentMonth.explanation}`,
+        targetRange: [0, 0], // Will be filled by caller
+        strategy: confidence.recommendation === 'BUY' ? 'Buy dips near support levels' : confidence.recommendation === 'SELL' ? 'Sell rallies near resistance levels' : 'Range trade between support and resistance',
         keyEvents: [],
+        planB: {
+            scenario: 'Weekly thesis breaks down — trend reversal detected',
+            action: 'REDUCE',
+            reasoning: 'If weekly direction reverses, reduce position size by 50% and reassess',
+            recoveryTarget: 0, // Will be filled by caller
+            maxLoss: '3-5% of total position',
+            timeline: '1-2 weeks',
+            steps: [
+                'Day 1-2 of reversal: Reduce position by 25%',
+                'Day 3 of continued reversal: Reduce another 25%',
+                'If reversal extends beyond 5 sessions: Exit remaining and wait for new setup',
+            ],
+        },
     };
 }
 
