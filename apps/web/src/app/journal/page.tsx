@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BookOpen, Plus, Trash2, Pin, Calendar, Loader2 } from 'lucide-react';
+import { BookOpen, Plus, Trash2, Pin, Calendar, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Note {
@@ -10,6 +10,18 @@ interface Note {
     sentiment: 'neutral' | 'bullish' | 'bearish';
     isPinned: boolean;
     createdAt: string;
+    type?: 'note' | 'trade';
+    tradeDetails?: {
+        symbol: string;
+        exchange: string;
+        entryPrice: number;
+        exitPrice?: number;
+        quantity: number;
+        direction: 'LONG' | 'SHORT';
+        pnl?: number;
+        status: 'OPEN' | 'CLOSED';
+        exitDate?: string;
+    };
 }
 
 export default function JournalPage() {
@@ -123,9 +135,43 @@ export default function JournalPage() {
                             layout
                             className="group relative bg-zinc-950 border border-zinc-900 rounded-xl p-5 hover:border-zinc-800 transition-colors"
                         >
-                            <p className="text-zinc-300 font-medium whitespace-pre-wrap mb-8 leading-relaxed">
-                                {note.content}
-                            </p>
+                            {note.type === 'trade' && note.tradeDetails ? (
+                                <div className="mb-8">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${note.tradeDetails.direction === 'LONG' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                                            {note.tradeDetails.direction === 'LONG' ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                                            {note.tradeDetails.direction}
+                                        </span>
+                                        <span className="text-zinc-400 font-bold text-sm">{note.tradeDetails.symbol}</span>
+                                        <span className="text-[10px] text-zinc-600 font-mono ml-auto">{note.tradeDetails.exchange}</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-zinc-500">Entry</span>
+                                            <span className="font-mono text-zinc-300">{note.tradeDetails.entryPrice}</span>
+                                        </div>
+                                        {note.tradeDetails.exitPrice && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-zinc-500">Exit</span>
+                                                <span className="font-mono text-zinc-300">{note.tradeDetails.exitPrice}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between text-xs pt-2 border-t border-zinc-800 mt-2">
+                                            <span className="text-zinc-500">Observed</span>
+                                            <span className="text-zinc-400">{new Date(note.createdAt).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+                                    {note.content && !note.content.startsWith('[TRADE]') && (
+                                        <p className="mt-4 text-xs text-zinc-500 italic border-l-2 border-zinc-800 pl-3">
+                                            {note.content}
+                                        </p>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-zinc-300 font-medium whitespace-pre-wrap mb-8 leading-relaxed">
+                                    {note.content}
+                                </p>
+                            )}
 
                             <div className="absolute bottom-4 left-5 right-5 flex justify-between items-center pt-4 border-t border-zinc-900 group-hover:border-zinc-800 transition-colors">
                                 <div className="flex items-center gap-2 text-xs text-zinc-600 font-mono">

@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
     TrendingUp, TrendingDown, Shield, AlertTriangle, CheckCircle2,
     DollarSign, Calendar, BarChart2, Target, Clock, ChevronRight,
     Zap, Activity, ArrowUpRight, ArrowDownRight, Minus,
-    ShieldAlert, ShieldCheck, CircleDot, ArrowUp, ArrowDown
+    ShieldAlert, ShieldCheck, CircleDot, ArrowUp, ArrowDown, BookOpen
 } from 'lucide-react';
 import { CollapsibleSection } from '@/components/ui/CollapsibleSection';
 import { PlanBCard } from './PlanBCard';
+import { SignalStrengthBadge } from './SignalStrengthBadge';
+import { PositionSizer } from './PositionSizer';
 import { useLanguage } from '@/context/LanguageContext';
 
 interface CommodityResultProps {
@@ -27,6 +29,14 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
     const exchangeUnit = data.exchangePricing?.unit || '';
     const usdInr = data.exchangePricing?.usdInr || 0;
     const isINR = data.exchangePricing?.currency === 'INR';
+
+    const [isLogging, setIsLogging] = useState(false);
+    const [hasLogged, setHasLogged] = useState(false);
+
+    useEffect(() => {
+        setHasLogged(false);
+        setIsLogging(false);
+    }, [data.commodity, data.metadata?.timestamp]);
 
     const getConfColor = (score: number) => {
         if (score >= 75) return 'text-emerald-400';
@@ -47,6 +57,40 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
         if (risk === 'ELEVATED') return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
         if (risk === 'HIGH') return 'text-orange-400 bg-orange-500/10 border-orange-500/20';
         return 'text-rose-400 bg-rose-500/10 border-rose-500/20';
+    };
+
+    const handleLogTrade = async () => {
+        if (!data.multiHorizonPlan?.today || hasLogged) return;
+        setIsLogging(true);
+        try {
+            const plan = data.multiHorizonPlan.today;
+            const tradeDetails = {
+                symbol: data.commodity,
+                exchange: data.metadata.exchange,
+                entryPrice: Array.isArray(plan.entry) ? (plan.entry[0] + plan.entry[1]) / 2 : plan.entry,
+                exitPrice: plan.target,
+                quantity: 1,
+                direction: data.recommendation === 'BUY' ? 'LONG' : 'SHORT',
+                status: 'OPEN'
+            };
+
+            await fetch('/api/journal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: `[TRADE] ${data.recommendation} ${data.name} @ ${tradeDetails.entryPrice}`,
+                    sentiment: data.direction === 'BULLISH' ? 'bullish' : 'bearish',
+                    isPinned: false,
+                    type: 'trade',
+                    tradeDetails
+                })
+            });
+            setHasLogged(true);
+        } catch (e) {
+            console.error('Log trade error:', e);
+        } finally {
+            setIsLogging(false);
+        }
     };
 
     return (
@@ -80,6 +124,12 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                             <p className="text-[9px] sm:text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">
                                 {data.category} futures • {data.metadata?.aiModel || 'Smart'} analysis
                             </p>
+                            {/* Accuracy Badge */}
+                            {data.accuracy && data.accuracy.total > 0 && (
+                                <p className="text-[9px] sm:text-[10px] uppercase tracking-widest font-black text-emerald-400 mt-1 sm:mt-0">
+                                    • {data.accuracy.winRate}% Win Rate ({data.accuracy.total} trades)
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -113,6 +163,18 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                                 {data.direction}
                             </span>
                         </div>
+
+                        {/* Log Trade Button */}
+                        <button
+                            onClick={handleLogTrade}
+                            disabled={isLogging || hasLogged || !data.multiHorizonPlan?.today}
+                            className={`flex flex-col items-center justify-center gap-1 w-14 sm:w-16 py-2 sm:py-3 rounded-xl border transition-all ${hasLogged ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800/50 border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-foreground'}`}
+                        >
+                            <BookOpen size={20} className={hasLogged ? 'text-emerald-400' : 'text-zinc-400'} />
+                            <span className="text-[8px] font-black uppercase tracking-widest">
+                                {hasLogged ? 'SAVED' : 'LOG'}
+                            </span>
+                        </button>
                     </div>
                 </div>
 
@@ -122,6 +184,36 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                         &quot;{data.summary}&quot;
                     </p>
                 )}
+
+                {/* Signal Strength + Tradeability Row */}
+                <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row gap-3">
+                    {data.signalStrength && (
+                        <SignalStrengthBadge
+                            stars={data.signalStrength.stars}
+                            aligned={data.signalStrength.aligned}
+                            total={data.signalStrength.total}
+                            label={data.signalStrength.label}
+                        />
+                    )}
+
+                    {/* Don't Trade Warning */}
+                    {data.tradeability && !data.tradeability.canTrade && (
+                        <div className="flex-1 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 sm:p-4">
+                            <div className="flex items-center gap-2 mb-1">
+                                <ShieldAlert size={16} className="text-rose-400" />
+                                <span className="text-xs sm:text-sm font-black text-rose-400 uppercase tracking-wider">
+                                    🚫 Skip This Trade
+                                </span>
+                            </div>
+                            <p className="text-xs text-rose-300/80 font-medium">
+                                {data.tradeability.reason}
+                            </p>
+                            <p className="text-[10px] text-rose-300/60 font-medium mt-1">
+                                💡 {data.tradeability.suggestion}
+                            </p>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* ── Main Grid ── */}
@@ -168,6 +260,21 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                         )}
                     </div>
                 </div>
+
+                {/* ── Position Sizing Calculator ── */}
+                {data.multiHorizonPlan?.today && (
+                    <div className="lg:col-span-2">
+                        <PositionSizer
+                            entry={Array.isArray(data.multiHorizonPlan.today.entry) ? data.multiHorizonPlan.today.entry : [data.multiHorizonPlan.today.entry, data.multiHorizonPlan.today.entry]}
+                            stopLoss={data.multiHorizonPlan.today.stopLoss || 0}
+                            target={data.multiHorizonPlan.today.target || 0}
+                            commodity={data.commodity}  // e.g. 'GOLD'
+                            exchange={data.metadata?.exchange || 'COMEX'}
+                            currencySymbol={curr}
+                            isINR={isINR}
+                        />
+                    </div>
+                )}
 
                 {/* ── Macro Context (Collapsible) ── */}
                 <CollapsibleSection
@@ -409,7 +516,7 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                 </div>
                 <span>{new Date(data.metadata?.timestamp || Date.now()).toLocaleString()}</span>
             </div>
-        </div>
+        </div >
     );
 }
 

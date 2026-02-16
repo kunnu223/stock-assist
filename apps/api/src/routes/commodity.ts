@@ -9,6 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { analyzeCommodity, COMMODITY_SYMBOLS } from '../services/commodity';
 import { type Exchange, getSupportedExchanges } from '../services/commodity/exchange';
+import { CommodityPrediction } from '../models';
 
 export const commodityRouter = Router();
 
@@ -51,6 +52,56 @@ commodityRouter.get('/exchanges/:symbol', (req: Request, res: Response) => {
         name: COMMODITY_SYMBOLS[key].name,
         exchanges,
     });
+});
+
+
+
+/** GET /commodity/accuracy — Get backtesting accuracy stats */
+commodityRouter.get('/accuracy', async (_req: Request, res: Response) => {
+    try {
+        const total = await CommodityPrediction.countDocuments({ status: { $ne: 'PENDING' } });
+        const wins = await CommodityPrediction.countDocuments({ status: 'TARGET_HIT' });
+        const losses = await CommodityPrediction.countDocuments({ status: 'STOP_HIT' });
+        const open = await CommodityPrediction.countDocuments({ status: 'PENDING' });
+
+        const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+
+        // Group by commodity
+        const byCommodity = await CommodityPrediction.aggregate([
+            { $match: { status: { $ne: 'PENDING' } } },
+            {
+                $group: {
+                    _id: '$symbol',
+                    total: { $sum: 1 },
+                    wins: { $sum: { $cond: [{ $eq: ['$status', 'TARGET_HIT'] }, 1, 0] } },
+                    avgPnl: { $avg: '$pnlPercent' }
+                }
+            },
+            { $limit: 10 }
+        ]);
+
+        res.json({
+            success: true,
+            stats: {
+                total,
+                wins,
+                losses,
+                open,
+                winRate,
+                byCommodity: byCommodity.map(c => ({
+                    symbol: c._id,
+                    total: c.total,
+                    wins: c.wins,
+                    winRate: Math.round((c.wins / c.total) * 100),
+                    avgPnl: Math.round((c.avgPnl || 0) * 100) / 100,
+                }))
+            }
+        });
+    } catch (error) {
+        console.error('Accuracy stats error:', error);
+        // Graceful degradation if no DB
+        res.json({ success: true, stats: { total: 0, wins: 0, winRate: 0, open: 0, byCommodity: [] } });
+    }
 });
 
 /** POST /commodity — Analyze a commodity on a specific exchange */

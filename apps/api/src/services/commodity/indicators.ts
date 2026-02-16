@@ -19,6 +19,17 @@ export interface CommodityConfidenceResult {
     score: number;                // 15-95
     direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
     recommendation: 'BUY' | 'SELL' | 'HOLD' | 'WAIT';
+    signalStrength: {
+        stars: 1 | 2 | 3 | 4 | 5;
+        aligned: number;       // how many of 6 signals agree
+        total: number;         // always 6
+        label: string;         // "Strong Setup" / "Moderate" / "Don't Trade"
+    };
+    tradeability: {
+        canTrade: boolean;
+        reason: string;
+        suggestion: string;
+    };
     breakdown: {
         technical: number;
         seasonality: number;
@@ -211,10 +222,62 @@ export function calculateCommodityConfidence(
     else if (weightedScore < 40) recommendation = 'WAIT';
     else recommendation = 'HOLD';
 
+    // Signal Strength Stars
+    let stars: 1 | 2 | 3 | 4 | 5;
+    let starLabel: string;
+    if (dominant >= 5) {
+        stars = 5;
+        starLabel = 'Strong Setup — High Probability';
+    } else if (dominant >= 4) {
+        stars = 4;
+        starLabel = 'Good Setup';
+    } else if (dominant >= 3) {
+        stars = 3;
+        starLabel = 'Moderate — Be Cautious';
+    } else if (dominant >= 2) {
+        stars = 2;
+        starLabel = 'Weak — Risky Trade';
+    } else {
+        stars = 1;
+        starLabel = 'Conflicting — Don\'t Trade';
+    }
+
+    // Tradeability gate
+    const rsiExtreme = indicators.rsi.value > 85 || indicators.rsi.value < 15;
+    const crashHigh = crashDetection.probability > 60;
+    let canTrade = true;
+    let tradeReason = 'Signals are aligned — trade conditions acceptable';
+    let tradeSuggestion = 'Follow the recommended action with proper position sizing';
+
+    if (stars <= 2) {
+        canTrade = false;
+        tradeReason = `Only ${dominant}/6 signals agree — too much conflict`;
+        tradeSuggestion = 'Wait for 3+ signals to align before entering';
+    } else if (crashHigh) {
+        canTrade = false;
+        tradeReason = `Crash probability is ${crashDetection.probability}% — high risk environment`;
+        tradeSuggestion = 'Stay in cash until crash risk drops below 40%';
+    } else if (rsiExtreme) {
+        canTrade = false;
+        tradeReason = `RSI at extreme level (${indicators.rsi.value.toFixed(0)}) — reversal likely`;
+        tradeSuggestion = 'Wait for RSI to return to 30-70 range';
+    }
+
     return {
         score: weightedScore,
         direction,
-        recommendation,
+        recommendation: canTrade ? recommendation : 'WAIT',
+        signalStrength: {
+            stars,
+            aligned: dominant,
+            total: 6,
+            label: starLabel,
+        },
+        tradeability: {
+            canTrade,
+            reason: tradeReason,
+            suggestion: tradeSuggestion,
+        },
         breakdown: {
             technical: techScore,
             seasonality: seasonScore,

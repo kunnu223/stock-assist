@@ -3,9 +3,10 @@
  * @module @stock-assist/api/models
  */
 
-export { Trade, type ITrade } from './Trade';
-export { Watchlist, type IWatchlist } from './Watchlist';
-export { Prediction, type IPrediction, PredictionStatus } from './Prediction';
-export { DailyTopStocks } from './DailyTopStocks';
-export { DailyAnalysis, type IDailyAnalysis } from './DailyAnalysis';
+export * from './Trade';
+export * from './Journal';
+export * from './DailyTopStocks';
+export * from './DailyAnalysis';
+export * from './Prediction';
+export * from './CommodityPrediction';
 export * from './Watchlist';

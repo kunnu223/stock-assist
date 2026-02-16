@@ -17,6 +17,7 @@ import { detectMarketCrash, type CrashDetectionResult } from './crashDetection';
 import { analyzePriceVolume, calculateCommodityConfidence, type PriceVolumeSignal, type CommodityConfidenceResult } from './indicators';
 import { buildCommodityPrompt, type CommodityPromptInput } from './prompt';
 import { type Exchange, type ExchangePricing, buildExchangePricing, convertPlanPrices, getExchangeInfo, getSupportedExchanges } from './exchange';
+import { CommodityPrediction, CommodityPredictionStatus } from '../../models';
 
 export interface CommodityAnalysisResult {
     commodity: string;
@@ -29,6 +30,25 @@ export interface CommodityAnalysisResult {
     direction: string;
     recommendation: string;
     summary: string;
+
+    signalStrength: {
+        stars: 1 | 2 | 3 | 4 | 5;
+        aligned: number;
+        total: number;
+        label: string;
+    };
+
+    tradeability: {
+        canTrade: boolean;
+        reason: string;
+        suggestion: string;
+    };
+
+    accuracy: {
+        total: number;
+        winRate: number;
+        pnl: number;
+    };
 
     macroContext: {
         usd: {
@@ -212,7 +232,7 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
 
     // ── Stage 1: Parallel Data Fetch ──
     console.log(`[Commodity] 📊 Stage 1: Fetching data...`);
-    const [dataBundle, newsResult] = await Promise.all([
+    const [dataBundle, newsResult, accuracyStats] = await Promise.all([
         fetchCommodityData(key),
         fetchEnhancedNews(key).catch(() => ({
             items: [] as any[],
@@ -225,6 +245,7 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
             latestHeadlines: [] as string[],
             dataFreshness: 0,
         })),
+        fetchAccuracyStats(key)
     ]);
 
     // ── Stage 2: Technical Analysis ──
@@ -351,7 +372,7 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         ? Math.round((aiResult.confidenceScore + confidence.score) / 2)
         : confidence.score;
 
-    return {
+    const analysisResult: CommodityAnalysisResult = {
         commodity: key,
         name: COMMODITY_SYMBOLS[key].name,
         category: COMMODITY_SYMBOLS[key].category,
@@ -362,6 +383,10 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         direction: aiResult?.overallBias || confidence.direction,
         recommendation: confidence.recommendation,
         summary: aiResult?.summary || `${COMMODITY_SYMBOLS[key].name} analysis: ${confidence.direction} with ${confidence.score}% confidence`,
+
+        signalStrength: confidence.signalStrength,
+        tradeability: confidence.tradeability,
+        accuracy: accuracyStats,
 
         macroContext: {
             usd: {
@@ -429,6 +454,136 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
             exchange,
         },
     };
+
+    // Auto-save actionable prediction & Update pending ones (fire-and-forget)
+    Promise.all([
+        saveCommodityPrediction(analysisResult),
+        updatePendingPredictions(key, dataBundle.commodity.history)
+    ]).catch(err => console.error('[Commodity] Backtest update error:', err));
+
+    return analysisResult;
+}
+
+/**
+ * Save actionable prediction for backtesting
+ */
+async function saveCommodityPrediction(result: CommodityAnalysisResult) {
+    // Only save strictly actionable signals
+    if (result.recommendation === 'HOLD' || result.recommendation === 'WAIT') return;
+    if (!result.tradeability.canTrade) return;
+
+    try {
+        const todayPlan = result.multiHorizonPlan.today;
+        if (!todayPlan) return;
+
+        // Calculate entry average if range
+        const entry = Array.isArray(todayPlan.entry)
+            ? (todayPlan.entry[0] + todayPlan.entry[1]) / 2
+            : todayPlan.entry;
+
+        await CommodityPrediction.create({
+            symbol: result.commodity,
+            exchange: result.metadata.exchange,
+            direction: result.direction,
+            recommendation: result.recommendation,
+            confidence: result.confidence,
+            signalStars: result.signalStrength.stars,
+            entryPrice: entry,
+            targetPrice: todayPlan.target,
+            stopLoss: todayPlan.stopLoss,
+            status: CommodityPredictionStatus.PENDING,
+        });
+    } catch (error) {
+        // Silent fail if DB not connected
+    }
+}
+
+/**
+ * Fetch historical accuracy stats for a commodity
+ */
+async function fetchAccuracyStats(symbol: string) {
+    try {
+        const stats = await CommodityPrediction.aggregate([
+            { $match: { symbol: symbol, status: { $ne: 'PENDING' } } },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: 1 },
+                    wins: { $sum: { $cond: [{ $eq: ['$status', 'TARGET_HIT'] }, 1, 0] } },
+                    avgPnl: { $avg: '$pnlPercent' }
+                }
+            }
+        ]);
+        if (stats.length > 0 && stats[0]) {
+            return {
+                total: stats[0].total,
+                winRate: stats[0].total > 0 ? Math.round((stats[0].wins / stats[0].total) * 100) : 0,
+                pnl: Math.round((stats[0].avgPnl || 0) * 100) / 100
+            };
+        }
+    } catch (e) { }
+    return { total: 0, winRate: 0, pnl: 0 };
+}
+
+
+
+/**
+ * Check and update pending predictions based on fresh history
+ */
+async function updatePendingPredictions(symbol: string, history: OHLCData[]) {
+    try {
+        const pending = await CommodityPrediction.find({
+            symbol,
+            status: CommodityPredictionStatus.PENDING
+        });
+
+        for (const pred of pending) {
+            // Find history bars since prediction date
+            const relevantBars = history.filter(bar => new Date(bar.date) > pred.date);
+            if (relevantBars.length === 0) continue;
+
+            for (const bar of relevantBars) {
+                // Check Target
+                if (pred.direction === 'BULLISH') {
+                    if (bar.high >= pred.targetPrice) {
+                        pred.status = CommodityPredictionStatus.TARGET_HIT;
+                        pred.outcomePrice = pred.targetPrice;
+                        pred.outcomeDate = new Date(bar.date);
+                        pred.pnlPercent = ((pred.targetPrice - pred.entryPrice) / pred.entryPrice) * 100;
+                        await pred.save();
+                        break;
+                    }
+                    if (bar.low <= pred.stopLoss) {
+                        pred.status = CommodityPredictionStatus.STOP_HIT;
+                        pred.outcomePrice = pred.stopLoss;
+                        pred.outcomeDate = new Date(bar.date);
+                        pred.pnlPercent = ((pred.stopLoss - pred.entryPrice) / pred.entryPrice) * 100;
+                        await pred.save();
+                        break;
+                    }
+                } else if (pred.direction === 'BEARISH') {
+                    if (bar.low <= pred.targetPrice) {
+                        pred.status = CommodityPredictionStatus.TARGET_HIT;
+                        pred.outcomePrice = pred.targetPrice;
+                        pred.outcomeDate = new Date(bar.date);
+                        pred.pnlPercent = ((pred.entryPrice - pred.targetPrice) / pred.entryPrice) * 100;
+                        await pred.save();
+                        break;
+                    }
+                    if (bar.high >= pred.stopLoss) {
+                        pred.status = CommodityPredictionStatus.STOP_HIT;
+                        pred.outcomePrice = pred.stopLoss;
+                        pred.outcomeDate = new Date(bar.date);
+                        pred.pnlPercent = ((pred.entryPrice - pred.stopLoss) / pred.entryPrice) * 100; // Negative PnL usually
+                        await pred.save();
+                        break;
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error(`[Backtest] Error updating ${symbol}:`, e);
+    }
 }
 
 function buildFallbackToday(
