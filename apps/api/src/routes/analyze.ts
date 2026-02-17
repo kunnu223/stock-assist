@@ -19,16 +19,25 @@ import { DailyAnalysis } from '../models';
 // Enhanced analysis imports
 import { fetchEnhancedNews } from '../services/news/enhanced';
 import { fetchFundamentals } from '../services/data/fundamentals';
-import { performComprehensiveTechnicalAnalysis, getTechnicalSummary, calculateConfidence, calculatePatternConfluence, detectFundamentalTechnicalConflict } from '../services/analysis';
+import { performComprehensiveTechnicalAnalysis, getTechnicalSummary, calculateSplitConfidence, calculatePatternConfluence, detectFundamentalTechnicalConflict } from '../services/analysis';
 import { buildEnhancedPrompt } from '../services/ai/enhancedPrompt';
 import { analyzeWithEnsemble } from '../services/ai/ensembleAI';
 import { compareSector } from '../services/data';
 import { calcADX } from '../services/indicators/adx';
+import { calcATR } from '../services/indicators';
 import { formatAmount, formatPercent } from '../utils/formatting';
 import type { StockData } from '@stock-assist/shared';
-import type { ConfidenceResult } from '../services/analysis/confidenceScoring';
+import type { SplitConfidenceResult, ConfidenceResult } from '../services/analysis/confidenceScoring';
 import type { FundamentalData } from '../services/data/fundamentals';
 import { calculateRiskMetrics } from '../services/analysis/riskMetrics';
+import { classifyRegime } from '../services/analysis/regimeClassifier';
+import { saveSignal, updateSignalOutcomes, getSignalStats, getEmpiricalProbability } from '../services/backtest/signalTracker';
+import { evaluateSelectivity } from '../services/analysis/tradeSelectivity';
+import { evaluateExpectancy } from '../services/analysis/expectancy';
+import { calibrateConfidence } from '../services/analysis/calibration';
+import { getRegimeLearningStatus } from '../services/analysis/regimeClassifier';
+import { getModifiersForConditions, getDerivedModifiers } from '../services/analysis/dataDerivedModifiers';
+import { getMarketBreadth } from '../services/analysis/breadth';
 
 export const analyzeRouter = Router();
 
@@ -152,19 +161,41 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
         const adxResult = calcADX(stock.history);
         console.log(`[Analyze] 📈 ADX: ${adxResult.adx} (${adxResult.trendStrength}), +DI=${adxResult.plusDI}, -DI=${adxResult.minusDI}`);
 
+        // Step 2.5: Classify market regime
+        const atrValues = stock.history.slice(-20).map((_, i, arr) => {
+            if (i === 0) return 0;
+            const bar = arr[i];
+            const prev = arr[i - 1];
+            return Math.max(bar.high - bar.low, Math.abs(bar.high - prev.close), Math.abs(bar.low - prev.close));
+        }).filter(v => v > 0);
+        const atrCurrent = calcATR(stock.history);
+        const atrMean = atrValues.length > 0 ? atrValues.reduce((a, b) => a + b, 0) / atrValues.length : atrCurrent;
+
+        const regimeResult = classifyRegime({
+            adxValue: adxResult.adx,
+            atrCurrent,
+            atrMean,
+            volumeRatio: technicalAnalysis.indicators.daily.volume.ratio,
+            newsImpact: enhancedNews.impactLevel,
+            hasBreakingNews: enhancedNews.breakingNews?.length > 0,
+            alignmentScore: technicalAnalysis.multiTimeframe.alignmentScore || 50
+        });
+        console.log(`[Analyze] 🏛️ Regime: ${regimeResult.regime} (${regimeResult.confidence}% confidence) — ${regimeResult.description}`);
+
         console.log(`[Analyze] Data fetched in ${((Date.now() - start) / 1000).toFixed(1)}s`);
         console.log(`[Analyze] Technical analysis: alignment=${technicalAnalysis.multiTimeframe.alignment}`);
 
-        // Step 3: Calculate base confidence score
-        const confidenceResult = calculateConfidence({
+        // Step 3: Calculate split confidence (Phase B: direction + strength separated)
+        const confidenceResult = calculateSplitConfidence({
             patterns: technicalAnalysis.patterns.daily,
             news: enhancedNews,
             indicators: technicalAnalysis.indicators.daily,
             fundamentals,
             weeklyIndicators: technicalAnalysis.indicators.weekly || undefined,
-            monthlyIndicators: technicalAnalysis.indicators.monthly || undefined
+            monthlyIndicators: technicalAnalysis.indicators.monthly || undefined,
+            regime: regimeResult.regime
         });
-        console.log(`[analyze.ts:167] 📊 Base Confidence Calculated: ${confidenceResult.score}/100 → ${confidenceResult.recommendation}`);
+        console.log(`[Analyze] 📊 Confidence: ${confidenceResult.score}/100 → ${confidenceResult.recommendation} | Direction: ${confidenceResult.direction.direction} (conviction: ${confidenceResult.direction.conviction}%, bull:${confidenceResult.direction.bullishSignals} bear:${confidenceResult.direction.bearishSignals})`);
 
         // NEW: Step 3.5: Calculate pattern confluence across timeframes
         console.log(`[analyze.ts:170] 🔄 Calculating pattern confluence...`);
@@ -191,66 +222,57 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
         const sectorComparison = await compareSector(stock.symbol, stock.quote.changePercent);
         console.log(`[analyze.ts:192] 📉 Sector Verdict: ${sectorComparison.verdict}, Outperformance: ${sectorComparison.outperformance}%, Modifier: ${sectorComparison.confidenceModifier}%`);
 
-        // NEW: Volume Validation Gate (soft penalty, only for unconfirmed breakouts)
+        // Condition variables used by modifiers, selectivity, and signal tracking
         const volumeRatio = technicalAnalysis.indicators.daily.volume.ratio;
+        const alignmentScore = technicalAnalysis.multiTimeframe.alignmentScore || 50;
         const isBullishBreakout = confidenceResult.recommendation === 'BUY' && stock.quote.changePercent > 1;
         const isBearishBreakout = confidenceResult.recommendation === 'SELL' && stock.quote.changePercent < -1;
-        let volumeGatePassed = true;
-        let volumePenalty = 0;
-        if ((isBullishBreakout || isBearishBreakout) && volumeRatio < 1.5) {
-            volumeGatePassed = false;
-            volumePenalty = -10;  // Softened from -25: flag it but don't crush the score
-            console.log(`[Analyze] ⚠️ Volume gate FAILED: ${volumeRatio.toFixed(2)}x < 1.5x → -10%`);
-        } else if (volumeRatio >= 2.0) {
-            volumePenalty = 5;  // Reward strong volume confirmation
-            console.log(`[Analyze] ✅ Volume gate PASSED with strength: ${volumeRatio.toFixed(2)}x → +5%`);
-        } else if (volumeRatio >= 1.5) {
-            console.log(`[Analyze] ✅ Volume gate PASSED: ${volumeRatio.toFixed(2)}x`);
+        const volumeGatePassed = volumeRatio >= 1.2;
+
+        // Phase D #8: Data-derived modifiers (replace static +8%/-10% with empirical values)
+        const derivedMods = await getModifiersForConditions(volumeRatio, alignmentScore, adxResult.adx);
+        const volumePenaltyFinal = (isBullishBreakout || isBearishBreakout) && volumeRatio < 1.5
+            ? -10 : derivedMods.volumeModifier;
+        const multiTFPenalty = derivedMods.multiTFModifier;
+        const adxPenalty = derivedMods.adxModifier;
+        console.log(`[Analyze] 📐 Modifiers (${derivedMods.source}): vol=${volumePenaltyFinal}, mtf=${multiTFPenalty}, adx=${adxPenalty}`);
+
+        // Phase E #10: Market breadth modifier
+        const breadth = await getMarketBreadth();
+        const breadthModifier = confidenceResult.direction.direction === 'BULLISH' ? breadth.modifier : 0;
+        if (breadthModifier !== 0) {
+            console.log(`[Analyze] 🌐 Breadth ${breadth.zone}: ${breadth.breadth}% above 50DMA → ${breadthModifier > 0 ? '+' : ''}${breadthModifier}%`);
         }
 
-        // NEW: Multi-Timeframe Scoring (proportional, not binary gate)
-        // alignmentScore: 100=all agree, 50=neutral/mixed, 35=some disagreement
-        const alignmentScore = technicalAnalysis.multiTimeframe.alignmentScore || 50;
-        let multiTFPenalty = 0;
-        if (alignmentScore >= 100) {
-            multiTFPenalty = 15;  // All 3 timeframes agree perfectly
-            console.log(`[Analyze] ✅ Multi-TF: Perfect alignment ${alignmentScore}% → +15%`);
-        } else if (alignmentScore >= 65) {
-            multiTFPenalty = 8;  // Strong majority agree
-            console.log(`[Analyze] ✅ Multi-TF: Strong alignment ${alignmentScore}% → +8%`);
-        } else if (alignmentScore >= 50) {
-            multiTFPenalty = 0;  // Neutral/mixed — no penalty, no bonus
-            console.log(`[Analyze] ℹ️ Multi-TF: Neutral alignment ${alignmentScore}% → 0%`);
-        } else {
-            multiTFPenalty = -10;  // Active disagreement between timeframes
-            console.log(`[Analyze] ⚠️ Multi-TF: Conflicting signals ${alignmentScore}% → -10%`);
-        }
-
-        // NEW: ADX Trend Strength Filter (soft modifiers)
-        let adxPenalty = 0;
-        if (adxResult.adx < 15) {
-            adxPenalty = -8;  // Choppy market, mild warning
-            console.log(`[Analyze] ⚠️ ADX choppy market: ${adxResult.adx} < 15 → -8%`);
-        } else if (adxResult.adx < 20) {
-            adxPenalty = -5;  // Weak trend
-            console.log(`[Analyze] ⚠️ ADX weak trend: ${adxResult.adx} < 20 → -5%`);
-        } else if (adxResult.adx >= 25) {
-            adxPenalty = 8;   // Strong trend confirmation
-            console.log(`[Analyze] ✅ ADX strong trend: ${adxResult.adx} → +8%`);
-        }
-
-        // Calculate adjusted confidence with ALL gates
+        // Calculate adjusted confidence with ALL gates + data-derived modifiers
         const baseConfidence = confidenceResult.score;
         const adjustedConfidence = Math.max(15, Math.min(95,
             baseConfidence +
             patternConfluence.confidenceModifier +
             ftConflict.confidenceAdjustment +
             sectorComparison.confidenceModifier +
-            volumePenalty +
+            volumePenaltyFinal +
             multiTFPenalty +
-            adxPenalty
+            adxPenalty +
+            breadthModifier
         ));
-        console.log(`[Analyze] 🎯 Confidence: ${baseConfidence}% → ${adjustedConfidence}% (vol:${volumePenalty}, mtf:${multiTFPenalty}, adx:${adxPenalty}, confluence:${patternConfluence.confidenceModifier}, ft:${ftConflict.confidenceAdjustment}, sector:${sectorComparison.confidenceModifier})`);
+        console.log(`[Analyze] 🎯 Confidence: ${baseConfidence}% → ${adjustedConfidence}% (vol:${volumePenaltyFinal}, mtf:${multiTFPenalty}, adx:${adxPenalty}, breadth:${breadthModifier}, confluence:${patternConfluence.confidenceModifier}, ft:${ftConflict.confidenceAdjustment}, sector:${sectorComparison.confidenceModifier})`);
+
+        // NEW: Trade selectivity filter — reject marginal setups
+        const ftSeverity = ftConflict.hasConflict
+            ? (Math.abs(ftConflict.confidenceAdjustment) >= 10 ? 'high' as const
+                : Math.abs(ftConflict.confidenceAdjustment) >= 5 ? 'medium' as const
+                    : 'low' as const)
+            : 'none' as const;
+
+        const selectivity = evaluateSelectivity({
+            adx: adxResult.adx,
+            adxHistory: adxResult.adxHistory,   // Phase E #11: pass ADX history for acceleration check
+            alignmentScore,
+            volumeRatio,
+            ftConflictSeverity: ftSeverity,
+        });
+        console.log(`[Analyze] 🛡️ Selectivity: ${selectivity.passed ? 'PASSED' : 'REJECTED'} (${selectivity.passedCount}/${selectivity.totalGates} gates) — ${selectivity.reason}`);
 
         // NEW: Calculate risk metrics
         const direction = confidenceResult.recommendation === 'BUY' ? 'bullish' : confidenceResult.recommendation === 'SELL' ? 'bearish' : 'neutral';
@@ -261,6 +283,31 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             direction
         );
         console.log(`[Analyze] 📊 Risk: ExpReturn=${riskMetrics.expectedReturn}%, Sharpe=${riskMetrics.sharpeRatio}, WinRate=${riskMetrics.winRate}%, MaxDD=${riskMetrics.maxDrawdown}%`);
+
+        // Phase A: Empirical probability lookup (condition-set hashing)
+        const empiricalProb = await getEmpiricalProbability(
+            regimeResult.regime,
+            alignmentScore,
+            adxResult.adx,
+            volumeRatio
+        );
+        if (empiricalProb.available) {
+            console.log(`[Analyze] 📈 Empirical: ${empiricalProb.message}`);
+        } else {
+            console.log(`[Analyze] ℹ️ Empirical: ${empiricalProb.message}`);
+        }
+
+        // Phase B #4: Expectancy filter — reject trades with negative expectancy
+        const expectancyResult = evaluateExpectancy(empiricalProb);
+        console.log(`[Analyze] 💰 Expectancy: ${expectancyResult.reason}`);
+
+        // Phase C #5: Confidence calibration — adjust confidence based on historical accuracy
+        const calibration = await calibrateConfidence(adjustedConfidence);
+        if (calibration.wasCalibratable) {
+            console.log(`[Analyze] 🎯 Calibration: ${adjustedConfidence}% → ${calibration.calibrated}% (delta: ${calibration.delta > 0 ? '+' : ''}${calibration.delta}%, bucket: ${calibration.bucketUsed})`);
+        } else {
+            console.log(`[Analyze] ℹ️ Calibration: Not enough data (bucket: ${calibration.bucketUsed})`);
+        }
 
         // Breaking news override
         let breakingNewsOverride = false;
@@ -330,19 +377,20 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
         // Default bullish/bearish scenarios — probabilities tied to adjusted confidence
         const sr = technicalAnalysis.indicators.daily.sr;
 
-        // Calculate dynamic probabilities based on the system's confidence + direction
+        // Calculate dynamic probabilities — no artificial clamps (v5.0 IMMEDIATE fix #1)
+        // Let adjustedConfidence map naturally: no floors, no ceilings, no +10 bias
         let bullishProb: number;
         let bearishProb: number;
         if (confidenceResult.recommendation === 'BUY') {
-            bullishProb = Math.min(85, Math.max(55, adjustedConfidence + 10));
+            bullishProb = adjustedConfidence;
             bearishProb = 100 - bullishProb;
         } else if (confidenceResult.recommendation === 'SELL') {
-            bearishProb = Math.min(85, Math.max(55, adjustedConfidence + 10));
+            bearishProb = adjustedConfidence;
             bullishProb = 100 - bearishProb;
         } else {
             // HOLD/WAIT — slight bias from technicals
             const techScore = confidenceResult.breakdown.technicalAlignment;
-            bullishProb = Math.round(Math.max(30, Math.min(70, techScore)));
+            bullishProb = Math.round(Math.max(15, Math.min(85, techScore)));
             bearishProb = 100 - bullishProb;
         }
 
@@ -424,10 +472,11 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                         patternConfluence: patternConfluence.confidenceModifier,
                         fundamentalTechnical: ftConflict.confidenceAdjustment,
                         sectorComparison: sectorComparison.confidenceModifier,
-                        volumeGate: volumePenalty,
+                        volumeGate: volumePenaltyFinal,
                         multiTimeframeGate: multiTFPenalty,
                         adxFilter: adxPenalty,
-                        ensembleDisagreement: ensembleResult?.disagreementPenalty || 0
+                        breadth: breadthModifier,
+                        modifierSource: derivedMods.source,
                     },
                     qualityGates: {
                         volumeValidated: volumeGatePassed,
@@ -439,9 +488,8 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                         adxDirection: adxResult.trendDirection
                     },
                     ensemble: {
+                        role: 'qualitative-only',
                         modelUsed: ensembleResult?.modelUsed || 'fallback',
-                        groqConfidence: ensembleResult?.groqConfidence,
-                        geminiConfidence: ensembleResult?.geminiConfidence,
                         agreement: ensembleResult?.agreement || 'N/A'
                     },
                     patternConfluence: {
@@ -459,10 +507,70 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                         conflictType: ftConflict.conflictType,
                         recommendation: ftConflict.recommendation
                     },
+                    regime: {
+                        type: regimeResult.regime,
+                        confidence: regimeResult.confidence,
+                        description: regimeResult.description,
+                        weights: regimeResult.weights
+                    },
+                    // Phase E #10: Market breadth
+                    marketBreadth: {
+                        breadth: breadth.breadth,
+                        zone: breadth.zone,
+                        modifier: breadthModifier,
+                        description: breadth.description,
+                    },
+                    selectivity: {
+                        passed: selectivity.passed,
+                        reason: selectivity.reason,
+                        rejectedBy: selectivity.rejectedBy,
+                        passedCount: selectivity.passedCount,
+                        totalGates: selectivity.totalGates,
+                        gates: selectivity.gateResults
+                    },
                     breakingNews: {
                         count: enhancedNews.breakingNews.length,
                         impact: enhancedNews.breakingImpact,
                         override: breakingNewsOverride
+                    },
+                    // Phase A: Empirical probability from condition-set hashing
+                    empirical: {
+                        available: empiricalProb.available,
+                        conditionHash: empiricalProb.conditionHash,
+                        conditionLabel: empiricalProb.conditionLabel,
+                        sampleSize: empiricalProb.sampleSize,
+                        winRate: empiricalProb.winRate,
+                        expectancy: empiricalProb.expectancy,
+                        reliable: empiricalProb.reliable,
+                        message: empiricalProb.message,
+                    },
+                    // Phase B #3: Direction/Probability split model output
+                    directionModel: {
+                        direction: confidenceResult.direction.direction,
+                        conviction: confidenceResult.direction.conviction,
+                        bullishSignals: confidenceResult.direction.bullishSignals,
+                        bearishSignals: confidenceResult.direction.bearishSignals,
+                        signalDetails: confidenceResult.direction.signalDetails,
+                    },
+                    strengthModel: {
+                        strength: confidenceResult.strength.strength,
+                        regime: confidenceResult.strength.regime,
+                    },
+                    // Phase B #4: Expectancy filter result
+                    expectancyFilter: {
+                        accepted: expectancyResult.accepted,
+                        expectancy: expectancyResult.expectancy,
+                        riskRewardRatio: expectancyResult.riskRewardRatio,
+                        dataReliable: expectancyResult.dataReliable,
+                        reason: expectancyResult.reason,
+                    },
+                    // Phase C #5: Confidence calibration
+                    calibration: {
+                        original: calibration.original,
+                        calibrated: calibration.calibrated,
+                        delta: calibration.delta,
+                        bucketUsed: calibration.bucketUsed,
+                        wasCalibratable: calibration.wasCalibratable,
                     }
                 },
 
@@ -542,6 +650,24 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             }
         }
 
+        // Trade selectivity override — reject marginal setups
+        if (!selectivity.passed && (response.analysis.recommendation === 'BUY' || response.analysis.recommendation === 'SELL')) {
+            console.log(`[Analyze] 🛡️ Selectivity rejected ${symbol}: ${selectivity.reason} → downgrading to HOLD`);
+            response.analysis.recommendation = 'HOLD';
+            response.analysis.category = 'NEUTRAL';
+            response.analysis.reasoning = response.analysis.reasoning +
+                ` ⚠️ Trade rejected by selectivity filter: ${selectivity.reason}`;
+        }
+
+        // Phase B #4: Expectancy filter override — reject trades with negative expectancy
+        if (!expectancyResult.accepted && (response.analysis.recommendation === 'BUY' || response.analysis.recommendation === 'SELL')) {
+            console.log(`[Analyze] 💰 Expectancy rejected ${symbol}: ${expectancyResult.reason} → downgrading to HOLD`);
+            response.analysis.recommendation = 'HOLD';
+            response.analysis.category = 'NEUTRAL';
+            response.analysis.reasoning = response.analysis.reasoning +
+                ` ⚠️ Trade rejected by expectancy filter: Expectancy ${expectancyResult.expectancy.toFixed(3)}% (negative). Win rate ${expectancyResult.winRate}% is misleading.`;
+        }
+
         console.log(`[Analyze] ✅ Enhanced analysis complete for ${symbol} in ${response.processingTime}`);
 
         // Store in DailyAnalysis History (One record per stock per day)
@@ -564,6 +690,51 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             console.log(`[Analyze] 🏛️ Daily analysis history updated for ${symbol}`);
         } catch (dbError) {
             console.warn(`[Analyze] ⚠️ Failed to save daily analysis for ${symbol}:`, dbError);
+        }
+
+        // Signal tracking — save every actionable signal for statistical analysis (fire-and-forget)
+        const rec = response.analysis.recommendation;
+        if (rec === 'BUY' || rec === 'SELL') {
+            const sr = technicalAnalysis.indicators.daily.sr;
+            const signalEntry = stock.quote.price;
+            const signalTarget = rec === 'BUY' ? sr.resistance : sr.support;
+            const signalSL = rec === 'BUY' ? sr.support : sr.resistance;
+
+            const adxRegimeStr = adxResult.adx >= 25 ? 'strong' as const : adxResult.adx >= 15 ? 'weak' as const : 'choppy' as const;
+
+            Promise.all([
+                saveSignal({
+                    symbol,
+                    direction: rec,
+                    confidence: adjustedConfidence,
+                    baseConfidence: confidenceResult.score,
+                    adxValue: adxResult.adx,
+                    adxRegime: adxRegimeStr,
+                    volumeRatio: technicalAnalysis.indicators.daily.volume.ratio,
+                    volumeConfirmed: volumeGatePassed,
+                    alignmentScore,
+                    patternType: technicalAnalysis.patterns.daily?.primary?.name || null,
+                    patternConfluence: patternConfluence.score,
+                    sectorStrength: sectorComparison.verdict || 'unknown',
+                    sectorModifier: sectorComparison.confidenceModifier,
+                    rsiValue: technicalAnalysis.indicators.daily.rsi.value,
+                    fundamentalConflict: ftConflict.hasConflict,
+                    ftModifier: ftConflict.confidenceAdjustment,
+                    regime: regimeResult.regime,
+                    modifiers: {
+                        volume: volumePenaltyFinal,
+                        multiTF: multiTFPenalty,
+                        adx: adxPenalty,
+                        confluence: patternConfluence.confidenceModifier,
+                        ft: ftConflict.confidenceAdjustment,
+                        sector: sectorComparison.confidenceModifier,
+                    },
+                    entryPrice: signalEntry,
+                    targetPrice: signalTarget,
+                    stopLoss: signalSL,
+                }),
+                updateSignalOutcomes(symbol, stock.history)
+            ]).catch(err => console.error(`[SignalTracker] Error:`, err));
         }
 
         res.json(response);
@@ -610,6 +781,58 @@ analyzeRouter.get('/history', async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error('[Analyze] ❌ History fetch error:', error);
+        res.status(500).json({ success: false, error: String(error) });
+    }
+});
+
+/**
+ * GET /api/analyze/signal-stats - Signal tracking statistics & win-rate matrix
+ */
+analyzeRouter.get('/signal-stats', async (_req: Request, res: Response) => {
+    try {
+        const stats = await getSignalStats();
+
+        // Phase C: Include regime learning status and calibration
+        const [regimeLearning, calibrationResult] = await Promise.all([
+            getRegimeLearningStatus(),
+            import('../services/analysis/calibration').then(m => m.getConfidenceCalibration()),
+        ]);
+
+        res.json({
+            success: true,
+            ...stats,
+            // Phase C #7: Regime self-learning progress
+            regimeLearning: regimeLearning.regimes,
+            // Phase C #5: Confidence calibration table
+            confidenceCalibration: {
+                ready: calibrationResult.ready,
+                totalResolved: calibrationResult.totalResolved,
+                quality: calibrationResult.calibrationQuality,
+                overallAccuracy: calibrationResult.overallAccuracy,
+                buckets: calibrationResult.buckets,
+                recommendations: calibrationResult.recommendations,
+            },
+            // Phase D #8: Data-derived modifier status
+            derivedModifiers: await getDerivedModifiers().then(r => ({
+                ready: r.ready,
+                modifiers: r.modifiers,
+                totalSignals: r.totalSignals,
+                message: r.message,
+            })),
+            // Phase E #10: Market breadth
+            marketBreadth: await getMarketBreadth().then(b => ({
+                breadth: b.breadth,
+                zone: b.zone,
+                aboveCount: b.aboveCount,
+                totalEvaluated: b.totalEvaluated,
+                cachedAt: b.cachedAt,
+            })).catch(() => ({ breadth: null, zone: 'UNKNOWN', message: 'Failed to fetch breadth' })),
+            message: stats.ready
+                ? `Statistical engine ready with ${stats.resolved} resolved signals`
+                : `Need ${300 - stats.resolved} more resolved signals for statistical engine (currently ${stats.resolved}/300)`
+        });
+    } catch (error) {
+        console.error('[Analyze] ❌ Signal stats error:', error);
         res.status(500).json({ success: false, error: String(error) });
     }
 });

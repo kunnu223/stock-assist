@@ -1,7 +1,12 @@
 /**
- * Ensemble AI Service
- * Runs Groq and Gemini in parallel, averages results,
- * penalizes disagreement, uses rule-based tiebreaker.
+ * Ensemble AI Service — v2 (qualitative only)
+ * Runs Groq and Gemini in parallel for richer analysis.
+ * AI NO LONGER contributes to numeric probability scoring.
+ * AI provides: reasoning, risks, bias explanation, scenario narratives.
+ * 
+ * v1: averaged AI confidence + disagreement penalty → numeric score
+ * v2: AI is qualitative only — system confidence is the sole probability source
+ * 
  * @module @stock-assist/api/services/ai/ensembleAI
  */
 
@@ -12,25 +17,23 @@ import type { PromptInput } from './prompt';
 
 export interface EnsembleResult {
     analysis: StockAnalysis;
-    groqConfidence: number | null;
-    geminiConfidence: number | null;
-    agreement: 'HIGH' | 'MODERATE' | 'LOW';
-    disagreementPenalty: number;
+    role: 'qualitative-only';   // AI no longer votes on probability
+    agreement: 'HIGH' | 'MODERATE' | 'LOW';  // Direction agreement between models
     modelUsed: 'ensemble' | 'groq' | 'gemini' | 'fallback';
 }
 
 /**
- * Run ensemble AI analysis
- * 1. Run Groq + Gemini in parallel with same prompt input
- * 2. Average confidence scores
- * 3. Apply disagreement penalty if >20 point gap
- * 4. Rule-based tiebreaker if models disagree on direction
+ * Run ensemble AI analysis — qualitative only
+ * 1. Run Groq + Gemini in parallel
+ * 2. Merge qualitative output (reasoning, risks, scenarios)
+ * 3. Check direction agreement for logging purposes
+ * 4. System confidence is NOT modified by AI
  */
 export async function analyzeWithEnsemble(
     input: PromptInput,
     systemConfidence: number
 ): Promise<EnsembleResult | null> {
-    console.log(`[EnsembleAI] 🧠 Starting ensemble analysis for ${input.stock.symbol}...`);
+    console.log(`[EnsembleAI] 🧠 Starting qualitative ensemble analysis for ${input.stock.symbol}...`);
 
     // Run both models in parallel
     const [groqResult, geminiResult] = await Promise.allSettled([
@@ -48,42 +51,30 @@ export async function analyzeWithEnsemble(
         console.warn(`[EnsembleAI] Gemini rejected:`, geminiResult.reason);
     }
 
-    const groqConf = extractConfidence(groqAnalysis);
-    const geminiConf = extractConfidence(geminiAnalysis);
+    // Case 1: Both models succeeded → merge qualitative output
+    if (groqAnalysis && geminiAnalysis) {
+        const groqBias = normalizeBias(groqAnalysis.bias);
+        const geminiBias = normalizeBias(geminiAnalysis.bias);
 
-    console.log(`[EnsembleAI] Groq: ${groqConf !== null ? groqConf + '%' : 'FAILED'}, Gemini: ${geminiConf !== null ? geminiConf + '%' : 'FAILED'}`);
-
-    // Case 1: Both models succeeded → merge
-    if (groqAnalysis && geminiAnalysis && groqConf !== null && geminiConf !== null) {
-        const gap = Math.abs(groqConf - geminiConf);
         let agreement: EnsembleResult['agreement'];
-        let disagreementPenalty = 0;
-
-        if (gap <= 10) {
+        if (groqBias === geminiBias) {
             agreement = 'HIGH';
-        } else if (gap <= 20) {
+        } else if (groqBias === 'NEUTRAL' || geminiBias === 'NEUTRAL') {
             agreement = 'MODERATE';
         } else {
             agreement = 'LOW';
-            disagreementPenalty = -15;
-            console.log(`[EnsembleAI] ⚠️ HIGH disagreement: ${gap}pt gap → -15% penalty`);
+            console.log(`[EnsembleAI] ⚠️ Direction disagreement: Groq=${groqBias}, Gemini=${geminiBias}`);
         }
 
-        // Average confidence
-        let avgConfidence = Math.round((groqConf + geminiConf) / 2) + disagreementPenalty;
-        avgConfidence = Math.max(20, Math.min(95, avgConfidence));
+        // Merge qualitative output (NO confidence override)
+        const merged = mergeAnalyses(groqAnalysis, geminiAnalysis, systemConfidence);
 
-        // Merge: use Groq as base (larger model, more detailed), override confidence
-        const merged = mergeAnalyses(groqAnalysis, geminiAnalysis, avgConfidence, systemConfidence);
-
-        console.log(`[EnsembleAI] ✅ Ensemble complete: Groq=${groqConf}%, Gemini=${geminiConf}%, Avg=${avgConfidence}%, Agreement=${agreement}`);
+        console.log(`[EnsembleAI] ✅ Qualitative ensemble complete: Agreement=${agreement}, Models=both`);
 
         return {
             analysis: merged,
-            groqConfidence: groqConf,
-            geminiConfidence: geminiConf,
+            role: 'qualitative-only',
             agreement,
-            disagreementPenalty,
             modelUsed: 'ensemble',
         };
     }
@@ -93,10 +84,8 @@ export async function analyzeWithEnsemble(
         console.log(`[EnsembleAI] Using Groq only (Gemini failed)`);
         return {
             analysis: groqAnalysis,
-            groqConfidence: groqConf,
-            geminiConfidence: null,
+            role: 'qualitative-only',
             agreement: 'MODERATE',
-            disagreementPenalty: 0,
             modelUsed: 'groq',
         };
     }
@@ -106,10 +95,8 @@ export async function analyzeWithEnsemble(
         console.log(`[EnsembleAI] Using Gemini only (Groq failed)`);
         return {
             analysis: geminiAnalysis,
-            groqConfidence: null,
-            geminiConfidence: geminiConf,
+            role: 'qualitative-only',
             agreement: 'MODERATE',
-            disagreementPenalty: 0,
             modelUsed: 'gemini',
         };
     }
@@ -120,66 +107,41 @@ export async function analyzeWithEnsemble(
 }
 
 /**
- * Extract confidence score from an AI analysis result
- */
-function extractConfidence(analysis: StockAnalysis | null): number | null {
-    if (!analysis) return null;
-
-    // Try confidenceScore field first
-    if (typeof analysis.confidenceScore === 'number') return analysis.confidenceScore;
-
-    // Try extracting from confidence string
-    if (analysis.confidence === 'HIGH') return 80;
-    if (analysis.confidence === 'MEDIUM') return 60;
-    if (analysis.confidence === 'LOW') return 40;
-
-    return null;
-}
-
-/**
- * Merge two AI analyses with averaged confidence
- * Uses Groq as base (70b model = more detailed), applies averaged confidence,
- * and applies rule-based tiebreaker for direction disagreement
+ * Merge two AI analyses — qualitative only
+ * Uses Groq as base (70b model = more detailed),
+ * merges risks and scenarios from both models.
+ * Does NOT touch confidenceScore — that is system-only.
  */
 function mergeAnalyses(
     groq: StockAnalysis,
     gemini: StockAnalysis,
-    avgConfidence: number,
     systemConfidence: number
 ): StockAnalysis {
     // Use groq as base since 70b model gives richer analysis
     const merged = { ...groq };
 
-    // Override confidence with ensemble average
-    merged.confidenceScore = avgConfidence;
-    merged.confidence = avgConfidence > 70 ? 'HIGH' : avgConfidence > 50 ? 'MEDIUM' : 'LOW';
+    // DO NOT override confidence — system scoring is the sole authority
+    // merged.confidenceScore is left as whatever Groq returned (for narrative only)
+    // The actual confidence used in the response is `adjustedConfidence` from analyze.ts
 
     // Rule-based tiebreaker: if models disagree on direction
     const groqBias = normalizeBias(groq.bias);
     const geminiBias = normalizeBias(gemini.bias);
 
     if (groqBias !== geminiBias && groqBias !== 'NEUTRAL' && geminiBias !== 'NEUTRAL') {
-        // Models disagree on direction → use system confidence as tiebreaker
-        console.log(`[EnsembleAI] 🔄 Direction disagreement: Groq=${groqBias}, Gemini=${geminiBias} → Using system confidence (${systemConfidence}%) as tiebreaker`);
+        console.log(`[EnsembleAI] 🔄 Direction disagreement: Groq=${groqBias}, Gemini=${geminiBias} → Using system direction`);
 
+        // System decides direction — AI doesn't get a vote
         if (systemConfidence >= 60) {
-            // System has an opinion — keep the model that agrees with system
-            const systemBias = systemConfidence >= 60 ? 'BULLISH' : 'BEARISH'; // From recommendation context
-            if (geminiBias === systemBias) {
-                merged.bias = gemini.bias;
-                merged.recommendation = gemini.recommendation;
-            }
-            // else keep groq (already the base)
+            // Keep groq's base analysis (richer) — direction is overridden by system in analyze.ts anyway
         } else {
-            // System is uncertain too → downgrade to NEUTRAL/HOLD
+            // System uncertain + AI disagrees → downgrade to neutral narrative
             merged.bias = 'NEUTRAL';
             merged.recommendation = 'HOLD';
-            merged.confidenceScore = Math.min(avgConfidence, 50);
-            merged.confidence = 'LOW';
         }
     }
 
-    // Merge risk arrays (combine unique risks) — AI returns extra fields not in StockAnalysis type
+    // Merge risk arrays (combine unique risks from both models)
     const groqAny = groq as any;
     const geminiAny = gemini as any;
     if (groqAny.risks && geminiAny.risks) {
@@ -190,7 +152,8 @@ function mergeAnalyses(
         (merged as any).risks = Array.from(allRisks).slice(0, 5);
     }
 
-    // Average bullish/bearish probabilities if both present
+    // Average bullish/bearish probabilities from AI for narrative context only
+    // (these are displayed as AI's view, not the system's probability)
     if (groq.bullish?.probability && gemini.bullish?.probability) {
         merged.bullish = {
             ...groq.bullish,

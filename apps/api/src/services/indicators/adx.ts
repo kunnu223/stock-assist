@@ -13,6 +13,7 @@ export interface ADXResult {
     minusDI: number;                  // -DI (bearish pressure)
     trendStrength: 'strong' | 'moderate' | 'weak' | 'choppy';
     trendDirection: 'bullish' | 'bearish' | 'neutral';
+    adxHistory: number[];             // Last 5 ADX values for trend acceleration check
 }
 
 /**
@@ -21,7 +22,7 @@ export interface ADXResult {
  */
 export function calcADX(data: OHLCData[], period: number = 14): ADXResult {
     if (data.length < period * 2 + 1) {
-        return { adx: 0, plusDI: 0, minusDI: 0, trendStrength: 'choppy', trendDirection: 'neutral' };
+        return { adx: 0, plusDI: 0, minusDI: 0, trendStrength: 'choppy', trendDirection: 'neutral', adxHistory: [] };
     }
 
     // Step 1: Calculate True Range, +DM, -DM for each bar
@@ -104,7 +105,7 @@ export function calcADX(data: OHLCData[], period: number = 14): ADXResult {
 
     // Step 4: Calculate ADX as smoothed average of DX
     if (dxArray.length < period) {
-        return { adx: 0, plusDI: 0, minusDI: 0, trendStrength: 'choppy', trendDirection: 'neutral' };
+        return { adx: 0, plusDI: 0, minusDI: 0, trendStrength: 'choppy', trendDirection: 'neutral', adxHistory: [] };
     }
 
     let adxSum = 0;
@@ -113,10 +114,17 @@ export function calcADX(data: OHLCData[], period: number = 14): ADXResult {
     }
     let adx = adxSum / period;
 
+    // Collect ADX history for trend acceleration check (Phase E #11)
+    const adxValues: number[] = [adx];
+
     // Continue smoothing ADX
     for (let i = period; i < dxArray.length; i++) {
         adx = ((adx * (period - 1)) + dxArray[i]) / period;
+        adxValues.push(adx);
     }
+
+    // Last 5 ADX values for acceleration check
+    const adxHistory = adxValues.slice(-5).map(v => Number(v.toFixed(2)));
 
     // Get latest +DI and -DI
     const latestPlusDI = plusDIArray[plusDIArray.length - 1];
@@ -141,5 +149,6 @@ export function calcADX(data: OHLCData[], period: number = 14): ADXResult {
         minusDI: Number(latestMinusDI.toFixed(2)),
         trendStrength,
         trendDirection,
+        adxHistory,
     };
 }

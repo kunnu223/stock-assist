@@ -1,15 +1,26 @@
 /**
- * Confidence Scoring Service — v2 (wider differentiation)
+ * Confidence Scoring Service — v4 (direction/probability split)
  * 
  * v1 problem: all sub-scores started at 50 with ±10 modifiers,
  * producing a weighted average always in 50-65 range.
  * 
  * v2 fix: stronger signals → wider ranges, signal agreement amplifier
  * 
+ * v3 fix: dynamic weights based on market regime instead of static 35/20/15/15/15.
+ * In strong trends, technical weight increases. In event-driven markets, news dominates.
+ * Falls back to default weights when regime is not provided.
+ * 
+ * v4 fix (Phase B #3): Split Direction from Probability.
+ * Model A → Direction = BULLISH | BEARISH | NEUTRAL (from signal agreement)
+ * Model B → Strength = 0-100% (from regime-weighted sub-scores)
+ * These are now independent outputs — no bias contamination.
+ * 
  * @module @stock-assist/api/services/analysis/confidenceScoring
  */
 
 import type { TechnicalIndicators, PatternAnalysis } from '@stock-assist/shared';
+import type { MarketRegime } from '../../models/SignalRecord';
+import { getWeightsForRegime, type RegimeWeights } from './regimeClassifier';
 
 // Local type definitions (to avoid circular dependencies with shared package)
 export interface EnhancedNewsAnalysis {
@@ -50,6 +61,40 @@ export interface ConfidenceResult {
     recommendation: 'BUY' | 'SELL' | 'HOLD' | 'WAIT';
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Phase B #3: Direction/Probability Split (New Interfaces)
+// ═══════════════════════════════════════════════════════════════
+
+/** Model A output — pure direction signal independent of strength */
+export interface DirectionResult {
+    direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+    conviction: number;          // 0-100 how strongly signals agree on this direction
+    bullishSignals: number;      // count of bullish signals
+    bearishSignals: number;      // count of bearish signals
+    signalDetails: string[];     // which signals contributed
+}
+
+/** Model B output — pure strength/probability independent of direction */
+export interface StrengthResult {
+    strength: number;            // 0-100 weighted sub-score strength
+    breakdown: ConfidenceBreakdown;
+    regime?: MarketRegime;
+    weightsUsed: RegimeWeights;
+}
+
+/** Combined result from the split model (Phase B #3) */
+export interface SplitConfidenceResult {
+    // Model A: Direction
+    direction: DirectionResult;
+    // Model B: Strength
+    strength: StrengthResult;
+    // Combined (backward-compatible)
+    score: number;               // strength, clamped 15-95
+    recommendation: 'BUY' | 'SELL' | 'HOLD' | 'WAIT';
+    factors: string[];
+    breakdown: ConfidenceBreakdown;
+}
+
 interface ScoringInput {
     patterns: PatternAnalysis;
     news: EnhancedNewsAnalysis;
@@ -57,16 +102,25 @@ interface ScoringInput {
     fundamentals: FundamentalData;
     weeklyIndicators?: TechnicalIndicators;
     monthlyIndicators?: TechnicalIndicators;
+    regime?: MarketRegime;  // v3: dynamic weights based on market regime
 }
 
-// Weight configuration (total = 100%)
-const WEIGHTS = {
-    patternStrength: 0.20,      // 20% — patterns
-    newsSentiment: 0.15,        // 15% — news (often neutral, reduce weight)
-    technicalAlignment: 0.35,   // 35% — technical is king for swing trades
-    volumeConfirmation: 0.15,   // 15% — volume
-    fundamentalStrength: 0.15,  // 15% — fundamentals
+// Default weight configuration (fallback when no regime is classified)
+const DEFAULT_WEIGHTS: RegimeWeights = {
+    technical: 0.35,       // 35% — technical is king for swing trades
+    pattern: 0.20,         // 20% — patterns
+    volume: 0.15,          // 15% — volume
+    news: 0.15,            // 15% — news (often neutral, reduce weight)
+    fundamental: 0.15,     // 15% — fundamentals
 };
+
+/**
+ * Get active weights — regime-adaptive or default fallback
+ */
+function getActiveWeights(regime?: MarketRegime): RegimeWeights {
+    if (!regime) return DEFAULT_WEIGHTS;
+    return getWeightsForRegime(regime);
+}
 
 /**
  * Calculate pattern strength score (0-100)
@@ -315,9 +369,34 @@ const scoreFundamentalStrength = (fundamentals: FundamentalData): { score: numbe
 
 /**
  * Calculate overall confidence score and recommendation
- * v2: Added signal agreement amplifier — when signals agree, push score harder
+ * v3: Regime-adaptive weights (backward-compatible wrapper)
+ * Internally delegates to the split model (v4).
  */
 export const calculateConfidence = (input: ScoringInput): ConfidenceResult => {
+    const split = calculateSplitConfidence(input);
+    return {
+        score: split.score,
+        breakdown: split.breakdown,
+        factors: split.factors,
+        recommendation: split.recommendation,
+    };
+};
+
+/**
+ * Phase B #3: Split Direction/Probability Model
+ * 
+ * Model A (Direction): Counts bullish vs bearish technical signals.
+ *   Output: BULLISH | BEARISH | NEUTRAL + conviction score.
+ *   Pure signal agreement — no mixing with strength.
+ * 
+ * Model B (Strength): Weighted sub-score calculation.
+ *   Output: 0-100% strength score based on regime-adaptive weights.
+ *   Pure strength — no mixing with direction.
+ * 
+ * Combined: direction + strength → recommendation.
+ */
+export const calculateSplitConfidence = (input: ScoringInput): SplitConfidenceResult => {
+    // ── Sub-score calculations (shared by both models) ──
     const patternResult = scorePatternStrength(input.patterns);
     const newsResult = scoreNewsSentiment(input.news);
     const technicalResult = scoreTechnicalAlignment(
@@ -336,49 +415,94 @@ export const calculateConfidence = (input: ScoringInput): ConfidenceResult => {
         fundamentalStrength: fundamentalResult.score,
     };
 
-    // Calculate weighted score
-    let weightedScore = Math.round(
-        breakdown.patternStrength * WEIGHTS.patternStrength +
-        breakdown.newsSentiment * WEIGHTS.newsSentiment +
-        breakdown.technicalAlignment * WEIGHTS.technicalAlignment +
-        breakdown.volumeConfirmation * WEIGHTS.volumeConfirmation +
-        breakdown.fundamentalStrength * WEIGHTS.fundamentalStrength
+    // ════════════════════════════════════════════
+    // MODEL A: Direction (pure signal agreement)
+    // ════════════════════════════════════════════
+    const bullishSignalChecks = [
+        { signal: input.indicators.ma.trend === 'bullish', label: 'MA bullish' },
+        { signal: input.indicators.macd.trend === 'bullish', label: 'MACD bullish' },
+        { signal: input.indicators.rsi.value > 40 && input.indicators.rsi.value < 70, label: 'RSI healthy range' },
+        { signal: input.patterns.primary?.type === 'bullish', label: 'Bullish pattern' },
+        { signal: input.patterns.atBreakout === true, label: 'At breakout' },
+    ];
+    const bearishSignalChecks = [
+        { signal: input.indicators.ma.trend === 'bearish', label: 'MA bearish' },
+        { signal: input.indicators.macd.trend === 'bearish', label: 'MACD bearish' },
+        { signal: input.indicators.rsi.value > 70, label: 'RSI overbought' },
+        { signal: input.patterns.primary?.type === 'bearish', label: 'Bearish pattern' },
+    ];
+
+    const bullishSignals = bullishSignalChecks.filter(s => s.signal).length;
+    const bearishSignals = bearishSignalChecks.filter(s => s.signal).length;
+    const totalChecks = bullishSignalChecks.length + bearishSignalChecks.length;
+    const dominantCount = Math.max(bullishSignals, bearishSignals);
+
+    const signalDetails: string[] = [
+        ...bullishSignalChecks.filter(s => s.signal).map(s => `✅ ${s.label}`),
+        ...bearishSignalChecks.filter(s => s.signal).map(s => `🔻 ${s.label}`),
+    ];
+
+    let directionValue: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+    if (bullishSignals > bearishSignals && bullishSignals >= 2) {
+        directionValue = 'BULLISH';
+    } else if (bearishSignals > bullishSignals && bearishSignals >= 2) {
+        directionValue = 'BEARISH';
+    } else {
+        directionValue = 'NEUTRAL';
+    }
+
+    // Conviction = how strongly signals agree (percentage of dominant signals)
+    const conviction = totalChecks > 0 ? Math.round((dominantCount / totalChecks) * 100) : 0;
+
+    const directionResult: DirectionResult = {
+        direction: directionValue,
+        conviction,
+        bullishSignals,
+        bearishSignals,
+        signalDetails,
+    };
+
+    // ════════════════════════════════════════════
+    // MODEL B: Strength (pure weighted sub-scores)
+    // ════════════════════════════════════════════
+    const weights = getActiveWeights(input.regime);
+
+    let strengthScore = Math.round(
+        breakdown.technicalAlignment * weights.technical +
+        breakdown.patternStrength * weights.pattern +
+        breakdown.volumeConfirmation * weights.volume +
+        breakdown.newsSentiment * weights.news +
+        breakdown.fundamentalStrength * weights.fundamental
     );
 
-    // ── Signal agreement amplifier ──
-    // When multiple signals agree on direction, amplify the score
-    // When they disagree, push toward neutral (50)
-    const bullishSignals = [
-        input.indicators.ma.trend === 'bullish',
-        input.indicators.macd.trend === 'bullish',
-        input.indicators.rsi.value > 40 && input.indicators.rsi.value < 70,
-        input.patterns.primary?.type === 'bullish',
-        input.patterns.atBreakout === true,
-    ].filter(Boolean).length;
+    // Dampen toward neutral only when signals show NO clear direction
+    if (dominantCount <= 1) {
+        strengthScore = Math.round(strengthScore * 0.85 + 50 * 0.15);
+    }
 
-    const bearishSignals = [
-        input.indicators.ma.trend === 'bearish',
-        input.indicators.macd.trend === 'bearish',
-        input.indicators.rsi.value > 70, // Overbought
-        input.patterns.primary?.type === 'bearish',
-    ].filter(Boolean).length;
+    const strengthResult: StrengthResult = {
+        strength: Math.min(95, Math.max(15, strengthScore)),
+        breakdown,
+        regime: input.regime,
+        weightsUsed: weights,
+    };
 
-    const dominantDirection = bullishSignals >= bearishSignals ? bullishSignals : bearishSignals;
+    // ════════════════════════════════════════════
+    // COMBINED: direction + strength → recommendation
+    // ════════════════════════════════════════════
+    const clampedScore = Math.min(95, Math.max(15, strengthScore));
 
-    // Amplifier: 4+ signals agree → boost by 12, 3 → +8, 2 → +0, 1 → -5
-    if (dominantDirection >= 4) {
-        const amplifier = 12;
-        weightedScore = weightedScore > 50
-            ? Math.min(95, weightedScore + amplifier)
-            : Math.max(15, weightedScore - amplifier);
-    } else if (dominantDirection >= 3) {
-        const amplifier = 8;
-        weightedScore = weightedScore > 50
-            ? Math.min(92, weightedScore + amplifier)
-            : Math.max(18, weightedScore - amplifier);
-    } else if (dominantDirection <= 1) {
-        // No clear direction — push toward neutral
-        weightedScore = Math.round(weightedScore * 0.85 + 50 * 0.15);
+    let recommendation: SplitConfidenceResult['recommendation'];
+    if (clampedScore < 35) {
+        recommendation = 'WAIT';
+    } else if (clampedScore >= 65 && directionValue === 'BULLISH') {
+        recommendation = 'BUY';
+    } else if (clampedScore >= 65 && directionValue === 'BEARISH') {
+        recommendation = 'SELL';
+    } else if (clampedScore >= 35 && clampedScore < 50) {
+        recommendation = 'WAIT';
+    } else {
+        recommendation = 'HOLD';
     }
 
     // Collect all factors
@@ -390,32 +514,12 @@ export const calculateConfidence = (input: ScoringInput): ConfidenceResult => {
         ...fundamentalResult.factors,
     ];
 
-    // Determine recommendation (v2: wider thresholds)
-    let recommendation: ConfidenceResult['recommendation'];
-    const isBullish = input.indicators.ma.trend === 'bullish' ||
-        input.patterns.primary?.type === 'bullish' ||
-        input.indicators.macd.trend === 'bullish';
-
-    const isBearish = input.indicators.ma.trend === 'bearish' ||
-        input.patterns.primary?.type === 'bearish' ||
-        input.indicators.macd.trend === 'bearish';
-
-    if (weightedScore < 35) {
-        recommendation = 'WAIT';
-    } else if (weightedScore >= 65 && isBullish) {
-        recommendation = 'BUY';
-    } else if (weightedScore >= 65 && isBearish) {
-        recommendation = 'SELL';
-    } else if (weightedScore >= 35 && weightedScore < 50) {
-        recommendation = 'WAIT';
-    } else {
-        recommendation = 'HOLD';
-    }
-
     return {
-        score: Math.min(95, Math.max(15, weightedScore)),
-        breakdown,
-        factors: allFactors.slice(0, 10),
+        direction: directionResult,
+        strength: strengthResult,
+        score: clampedScore,
         recommendation,
+        factors: allFactors.slice(0, 10),
+        breakdown,
     };
 };

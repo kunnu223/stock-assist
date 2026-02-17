@@ -10,3 +10,4 @@ export * from './DailyAnalysis';
 export * from './Prediction';
 export * from './CommodityPrediction';
 export * from './Watchlist';
+export * from './SignalRecord';

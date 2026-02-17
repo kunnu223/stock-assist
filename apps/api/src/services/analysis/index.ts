@@ -4,7 +4,7 @@
  */
 
 export { getCandlestickPatternNames } from './candlestick';
-export { calculateConfidence } from './confidenceScoring';
+export { calculateConfidence, calculateSplitConfidence } from './confidenceScoring';
 export { performComprehensiveTechnicalAnalysis, getTechnicalSummary } from './technicalAnalysis';
 export { calculatePatternConfluence } from './patternConfluence';
 export { detectFundamentalTechnicalConflict } from './fundamentalTechnical';
