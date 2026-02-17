@@ -1,6 +1,7 @@
 'use client';
 
-import { Activity, BarChart2, Globe, Zap, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, MoreHorizontal, Star } from 'lucide-react';
+import { useState } from 'react';
+import { Activity, BarChart2, Globe, Zap, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, MoreHorizontal, Star, Copy, Check } from 'lucide-react';
 import { useWatchlist } from '@/context/WatchlistContext';
 
 // Shared types (simplified for component usage)
@@ -48,6 +49,7 @@ export interface AnalysisData {
     category: string;
     bias: string;
     confidence: string;
+    rawPrompt?: string;
 }
 
 interface AnalysisDetailProps {
@@ -57,6 +59,8 @@ interface AnalysisDetailProps {
 export function AnalysisDetail({ data }: AnalysisDetailProps) {
     const { isFollowing, toggleFollow } = useWatchlist();
     const followed = isFollowing(data.stock);
+    const [copied, setCopied] = useState(false);
+
 
     const getConfidenceColor = (score: number) => {
         if (score >= 70) return 'text-emerald-500';
@@ -205,6 +209,46 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
                     ))}
                 </div>
             </div>
+
+            {/* Copy AI Prompt Section */}
+            {data.rawPrompt && (
+                <div className="border border-zinc-800 bg-zinc-950/30 rounded-xl overflow-hidden">
+                    <div className="px-5 py-4 flex items-center justify-between bg-zinc-900/30">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-violet-500/10 border border-violet-500/20">
+                                <Copy size={16} className="text-violet-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-xs font-bold text-foreground uppercase tracking-widest">AI Prompt Data</h3>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">Copy & paste into ChatGPT, Claude, or any AI</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(data.rawPrompt || '');
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 2000);
+                            }}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs tracking-wide transition-all active:scale-95 ${copied
+                                ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'
+                                : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-600/20'
+                                }`}
+                        >
+                            {copied ? (
+                                <>
+                                    <Check size={14} />
+                                    <span>COPIED!</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Copy size={14} />
+                                    <span>COPY PROMPT</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -227,3 +227,122 @@ Respond with this EXACT JSON structure:
   "newsSentiment": "positive" | "negative" | "neutral"
 }`;
 }
+
+/**
+ * Build a user-friendly commodity prompt for copying to other AI tools (ChatGPT, Claude, etc.)
+ * Same data as the internal prompt but asks for clear, actionable, human-readable output
+ */
+export function buildUserFriendlyCommodityPrompt(input: CommodityPromptInput): string {
+  const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines, language, exchange, exchangePricing } = input;
+
+  const isINR = exchange === 'MCX' || exchange === 'SPOT';
+  const cs = isINR && exchangePricing ? exchangePricing.currencySymbol : '$';
+  const price = isINR && exchangePricing ? exchangePricing.price : commodity.currentPrice;
+  const dayLow = isINR && exchangePricing ? exchangePricing.dayLow : commodity.dayLow;
+  const dayHigh = isINR && exchangePricing ? exchangePricing.dayHigh : commodity.dayHigh;
+  const support = isINR && exchangePricing ? exchangePricing.support : indicators.sr.support;
+  const resistance = isINR && exchangePricing ? exchangePricing.resistance : indicators.sr.resistance;
+  const atr = isINR && exchangePricing ? exchangePricing.atr : indicators.atr;
+  const fmtPrice = (v: number) => isINR ? Math.round(v).toLocaleString('en-IN') : v.toFixed(2);
+
+  const langInstruction = language === 'hi'
+    ? '\n\n🗣️ IMPORTANT: Provide your ENTIRE response in HINDI (हिन्दी / Devanagari script). All analysis, reasoning, risks, and trade plan must be in Hindi. Only keep numbers, commodity symbols, and price values in English.\n'
+    : '';
+
+  return `You are an expert commodity futures analyst. Analyze the following data for ${commodity.name} (${commodity.symbol}) and give me a clear, actionable trading recommendation.${langInstruction}
+
+📊 COMMODITY: ${commodity.name} (${commodity.symbol})
+💰 CURRENT PRICE: ${cs}${fmtPrice(price)} (${commodity.changePercent >= 0 ? '+' : ''}${commodity.changePercent.toFixed(2)}%)
+📈 Day Range: ${cs}${fmtPrice(dayLow)} - ${cs}${fmtPrice(dayHigh)}
+📊 Volume: ${commodity.volume.toLocaleString()} contracts
+💱 Exchange: ${exchange || 'COMEX'}
+
+═══════════════════════════════════════
+USD INDEX (DXY)
+═══════════════════════════════════════
+• Current: ${dxy.currentValue.toFixed(2)} (${dxy.changePercent >= 0 ? '+' : ''}${dxy.changePercent.toFixed(2)}%)
+• 30-day Trend: ${dxy.trend30d}
+• Impact on ${commodity.name}: ${macro.usdCorrelation.impact}
+
+═══════════════════════════════════════
+TECHNICAL INDICATORS
+═══════════════════════════════════════
+
+DAILY:
+• RSI (14): ${indicators.rsi.value.toFixed(1)} (${indicators.rsi.interpretation})
+• MACD: ${indicators.macd.trend} (MACD: ${indicators.macd.macd.toFixed(3)}, Signal: ${indicators.macd.signal.toFixed(3)})
+• Moving Averages: ${indicators.ma.trend} (SMA20: ${indicators.ma.sma20.toFixed(2)}, SMA50: ${indicators.ma.sma50.toFixed(2)})
+• Support: ${cs}${fmtPrice(support)} | Resistance: ${cs}${fmtPrice(resistance)}
+• ATR: ${cs}${fmtPrice(atr)}
+• Volume Trend: ${indicators.volume.trend} (${indicators.volume.ratio.toFixed(2)}x avg)
+
+${weeklyIndicators ? `WEEKLY:
+• RSI: ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation})
+• MACD: ${weeklyIndicators.macd.trend}
+• MA Trend: ${weeklyIndicators.ma.trend}` : ''}
+
+═══════════════════════════════════════
+COMMODITY-SPECIFIC ANALYSIS
+═══════════════════════════════════════
+
+PRICE-VOLUME: ${priceVolume.signal} — ${priceVolume.description}
+
+SEASONALITY:
+• ${seasonality.currentMonth.monthName}: ${seasonality.currentMonth.bias} (${seasonality.currentMonth.winRate}% historical win rate)
+• Reason: ${seasonality.currentMonth.explanation}
+• Next Month: ${seasonality.nextMonth.monthName} — ${seasonality.nextMonth.bias}
+• Quarter: ${seasonality.quarterOutlook}
+
+MACRO CONTEXT:
+• Overall Bias: ${macro.overallBias}
+• USD Correlation: ${macro.usdCorrelation.direction} (strength: ${macro.usdCorrelation.strength}%)
+${macro.ratios.map(r => `• ${r.name}: ${r.ratio} — ${r.interpretation}`).join('\n')}
+
+CRASH DETECTION:
+• Risk Level: ${crash.overallRisk} (${crash.probability}% probability)
+${crash.signals.filter(s => s.triggered).map(s => `• ⚠️ ${s.name}: ${s.description}`).join('\n') || '• All clear — no crash signals'}
+
+SYSTEM CONFIDENCE: ${confidence.score}% (${confidence.direction})
+Breakdown: Tech ${confidence.breakdown.technical}% | Season ${confidence.breakdown.seasonality}% | Macro ${confidence.breakdown.macro}% | PV ${confidence.breakdown.priceVolume}% | CrashRisk ${confidence.breakdown.crashRisk}%
+
+NEWS:
+${newsHeadlines.length > 0 ? newsHeadlines.slice(0, 5).map((h, i) => `${i + 1}. ${h}`).join('\n') : 'No significant news'}
+
+═══════════════════════════════════════
+WHAT I NEED FROM YOU
+═══════════════════════════════════════
+
+Based on the above data, give me a CLEAR and CONCISE analysis:
+
+1. 🎯 VERDICT: Is ${commodity.name} BULLISH or BEARISH right now? (One word + confidence %)
+
+2. 📋 TRADE PLAN — 3 Horizons:
+
+   TODAY:
+   • Action: BUY / SELL / HOLD / WAIT
+   • Entry: ${cs}___
+   • Stop Loss: ${cs}___ (with % risk)
+   • Target: ${cs}___
+
+   TOMORROW (conditional):
+   • If [trigger condition], then [action] at ${cs}___
+   • Watch levels: ${cs}___, ${cs}___
+
+   NEXT WEEK:
+   • Scenario: Bullish / Bearish / Range-bound
+   • Target Range: ${cs}___ to ${cs}___
+   • Strategy: [brief approach]
+
+3. 📝 KEY REASONING (2-3 lines max):
+   Why this direction? What are the strongest signals?
+
+4. ⚠️ RISKS (bullet points):
+   What could go wrong?
+
+5. 🛡️ PLAN B (if trade goes against you):
+   • What to do if price drops/rises against position
+   • Max acceptable loss
+   • Recovery strategy
+
+Keep the response SHORT and ACTIONABLE. No fluff. I need to make a trading decision based on this.`;
+}

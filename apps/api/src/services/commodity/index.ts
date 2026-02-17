@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Commodity Analysis Orchestrator
  * Coordinates all commodity analysis services
  * @module @stock-assist/api/services/commodity
@@ -15,7 +15,7 @@ import { analyzeSeasonality, type SeasonalityResult } from './seasonality';
 import { analyzeMacroContext, type MacroContext } from './macroContext';
 import { detectMarketCrash, type CrashDetectionResult } from './crashDetection';
 import { analyzePriceVolume, calculateCommodityConfidence, type PriceVolumeSignal, type CommodityConfidenceResult } from './indicators';
-import { buildCommodityPrompt, type CommodityPromptInput } from './prompt';
+import { buildCommodityPrompt, buildUserFriendlyCommodityPrompt, type CommodityPromptInput } from './prompt';
 import { type Exchange, type ExchangePricing, buildExchangePricing, convertPlanPrices, getExchangeInfo, getSupportedExchanges } from './exchange';
 import { CommodityPrediction, CommodityPredictionStatus } from '../../models';
 
@@ -116,6 +116,8 @@ export interface CommodityAnalysisResult {
 
     newsSentiment: string;
 
+    rawPrompt?: string;
+
     exchangePricing: ExchangePricing;
 
     metadata: {
@@ -143,12 +145,12 @@ function parseAIResponse(text: string): any | null {
 }
 
 /**
- * Run commodity AI analysis directly (Groq → Gemini fallback)
+ * Run commodity AI analysis directly (Groq â†’ Gemini fallback)
  * Uses custom commodity prompt instead of stock prompt
  */
 async function runCommodityAI(promptText: string): Promise<{ result: any; model: string }> {
 
-    // ── Try Groq first ──
+    // â”€â”€ Try Groq first â”€â”€
     const groqKey = process.env.GROQ_API_KEY;
     if (groqKey && groqKey !== 'demo-key') {
         const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
@@ -170,7 +172,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
                     if (text) {
                         const parsed = parseAIResponse(text);
                         if (parsed) {
-                            console.log(`[Commodity AI] ✅ Groq ${model} success`);
+                            console.log(`[Commodity AI] âœ… Groq ${model} success`);
                             return { result: parsed, model: `groq-${model}` };
                         }
                     }
@@ -186,7 +188,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
         }
     }
 
-    // ── Fallback to Gemini ──
+    // â”€â”€ Fallback to Gemini â”€â”€
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey && geminiKey !== 'demo-key') {
         try {
@@ -198,7 +200,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
             if (text) {
                 const parsed = parseAIResponse(text);
                 if (parsed) {
-                    console.log(`[Commodity AI] ✅ Gemini success`);
+                    console.log(`[Commodity AI] âœ… Gemini success`);
                     return { result: parsed, model: 'gemini-2.0-flash' };
                 }
             }
@@ -207,7 +209,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
         }
     }
 
-    console.warn(`[Commodity AI] ❌ All AI models failed — using system analysis only`);
+    console.warn(`[Commodity AI] âŒ All AI models failed â€” using system analysis only`);
     return { result: null, model: 'none' };
 }
 
@@ -226,12 +228,12 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     }
 
     const exchangeInfo = getExchangeInfo(exchange, key);
-    console.log(`\n[Commodity] ═══════════════════════════════════════`);
-    console.log(`[Commodity] 🪙 Analyzing ${COMMODITY_SYMBOLS[key].name} (${key}) on ${exchangeInfo.label} (${language || 'en'})`);
-    console.log(`[Commodity] ═══════════════════════════════════════\n`);
+    console.log(`\n[Commodity] â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•`);
+    console.log(`[Commodity] ðŸª™ Analyzing ${COMMODITY_SYMBOLS[key].name} (${key}) on ${exchangeInfo.label} (${language || 'en'})`);
+    console.log(`[Commodity] â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n`);
 
-    // ── Stage 1: Parallel Data Fetch ──
-    console.log(`[Commodity] 📊 Stage 1: Fetching data...`);
+    // â”€â”€ Stage 1: Parallel Data Fetch â”€â”€
+    console.log(`[Commodity] ðŸ“Š Stage 1: Fetching data...`);
     const [dataBundle, newsResult, accuracyStats] = await Promise.all([
         fetchCommodityData(key),
         fetchEnhancedNews(key).catch(() => ({
@@ -248,21 +250,21 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         fetchAccuracyStats(key)
     ]);
 
-    // ── Stage 2: Technical Analysis ──
-    console.log(`[Commodity] 📈 Stage 2: Technical analysis (${dataBundle.commodity.history.length} daily bars)...`);
+    // â”€â”€ Stage 2: Technical Analysis â”€â”€
+    console.log(`[Commodity] ðŸ“ˆ Stage 2: Technical analysis (${dataBundle.commodity.history.length} daily bars)...`);
     const indicators = calcIndicators(dataBundle.commodity.history);
     const weeklyIndicators = dataBundle.commodity.weeklyHistory.length >= 10
         ? calcIndicators(dataBundle.commodity.weeklyHistory)
         : undefined;
 
-    // ── Stage 3: Commodity-Specific Analysis ──
-    console.log(`[Commodity] 🔍 Stage 3: Commodity-specific analysis...`);
+    // â”€â”€ Stage 3: Commodity-Specific Analysis â”€â”€
+    console.log(`[Commodity] ðŸ” Stage 3: Commodity-specific analysis...`);
     const seasonality = analyzeSeasonality(key);
     const macro = analyzeMacroContext(dataBundle.commodity, dataBundle.dxy, dataBundle.correlatedPrices);
     const priceVolume = analyzePriceVolume(dataBundle.commodity.history);
 
-    // ── Stage 4: Crash Detection ──
-    console.log(`[Commodity] 🚨 Stage 4: Crash detection...`);
+    // â”€â”€ Stage 4: Crash Detection â”€â”€
+    console.log(`[Commodity] ðŸš¨ Stage 4: Crash detection...`);
     const allHistories = new Map<string, OHLCData[]>();
     allHistories.set(key, dataBundle.commodity.history);
     const highSeverityNewsCount = (newsResult.items || []).filter(
@@ -270,15 +272,15 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     ).length;
     const crash = detectMarketCrash(dataBundle.commodity, dataBundle.dxy, allHistories, highSeverityNewsCount);
 
-    // ── Stage 5: Confidence Scoring ──
-    console.log(`[Commodity] 🎯 Stage 5: Confidence scoring...`);
+    // â”€â”€ Stage 5: Confidence Scoring â”€â”€
+    console.log(`[Commodity] ðŸŽ¯ Stage 5: Confidence scoring...`);
     const confidence = calculateCommodityConfidence(
         indicators, seasonality, macro, priceVolume, crash, weeklyIndicators
     );
     console.log(`[Commodity] Confidence: ${confidence.score}% | Direction: ${confidence.direction} | Rec: ${confidence.recommendation}`);
 
-    // ── Stage 6: Exchange Pricing (moved before AI so prompt gets correct currency) ──
-    console.log(`[Commodity] 💱 Stage 6: Exchange pricing (${exchangeInfo.label})...`);
+    // â”€â”€ Stage 6: Exchange Pricing (moved before AI so prompt gets correct currency) â”€â”€
+    console.log(`[Commodity] ðŸ’± Stage 6: Exchange pricing (${exchangeInfo.label})...`);
     const exchangePricing = await buildExchangePricing(
         key, exchange,
         {
@@ -295,8 +297,8 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         }
     );
 
-    // ── Stage 7: AI Multi-Horizon Analysis ──
-    console.log(`[Commodity] 🤖 Stage 7: AI multi-horizon analysis...`);
+    // â”€â”€ Stage 7: AI Multi-Horizon Analysis â”€â”€
+    console.log(`[Commodity] ðŸ¤– Stage 7: AI multi-horizon analysis...`);
     const newsHeadlines = (newsResult.latestHeadlines || []).slice(0, 5);
     const promptInput: CommodityPromptInput = {
         commodity: dataBundle.commodity,
@@ -363,9 +365,9 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         ? await convertPlanPrices(rawPlan, key, exchange)
         : rawPlan;
 
-    // ── Stage 8: Response Assembly ──
+    // â”€â”€ Stage 8: Response Assembly â”€â”€
     const elapsed = Date.now() - startTime;
-    console.log(`[Commodity] ✅ Analysis complete in ${(elapsed / 1000).toFixed(1)}s (model: ${aiModel}, exchange: ${exchange})`);
+    console.log(`[Commodity] âœ… Analysis complete in ${(elapsed / 1000).toFixed(1)}s (model: ${aiModel}, exchange: ${exchange})`);
 
     // Average AI + system confidence
     const finalConfidence = aiResult?.confidenceScore
@@ -443,6 +445,9 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         },
 
         newsSentiment: aiResult?.newsSentiment || newsResult.sentiment || 'neutral',
+
+        // User-friendly prompt for copying to other AI tools
+        rawPrompt: buildUserFriendlyCommodityPrompt(promptInput),
 
         exchangePricing,
 
@@ -612,19 +617,19 @@ function buildFallbackToday(
         entry: [Math.round(entryLow * 100) / 100, Math.round(entryHigh * 100) / 100],
         stopLoss: Math.round(stopLoss * 100) / 100,
         target: Math.round(target * 100) / 100,
-        risks: ['AI analysis unavailable — fallback levels based on technicals only'],
+        risks: ['AI analysis unavailable â€” fallback levels based on technicals only'],
         validity: 'Until market close',
         planB: {
             scenario: `Price moves ${(atr / price * 100).toFixed(1)}% against position (1 ATR)`,
             action: 'HOLD',
-            reasoning: 'Within normal ATR volatility range — hold unless key support/resistance breaks',
+            reasoning: 'Within normal ATR volatility range â€” hold unless key support/resistance breaks',
             recoveryTarget: Math.round(price * 100) / 100,
             maxLoss: `${(atr * 1.5 / price * 100).toFixed(1)}% of position`,
             timeline: '1-2 trading sessions',
             steps: [
-                `If drops < ${(atr * 0.5 / price * 100).toFixed(1)}%: Hold — normal intraday volatility`,
+                `If drops < ${(atr * 0.5 / price * 100).toFixed(1)}%: Hold â€” normal intraday volatility`,
                 `If drops ${(atr * 0.5 / price * 100).toFixed(1)}-${(atr / price * 100).toFixed(1)}%: Tighten stop to entry level`,
-                `If drops > ${(atr * 1.5 / price * 100).toFixed(1)}%: Exit immediately — max loss reached`,
+                `If drops > ${(atr * 1.5 / price * 100).toFixed(1)}%: Exit immediately â€” max loss reached`,
             ],
         },
     };
@@ -691,7 +696,7 @@ function buildFallbackNextWeek(
         strategy: confidence.recommendation === 'BUY' ? 'Buy dips near support levels' : confidence.recommendation === 'SELL' ? 'Sell rallies near resistance levels' : 'Range trade between support and resistance',
         keyEvents: [],
         planB: {
-            scenario: 'Weekly thesis breaks down — trend reversal detected',
+            scenario: 'Weekly thesis breaks down â€” trend reversal detected',
             action: 'REDUCE',
             reasoning: 'If weekly direction reverses, reduce position size by 50% and reassess',
             recoveryTarget: 0, // Will be filled by caller

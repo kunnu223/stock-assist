@@ -5,7 +5,8 @@ import {
     TrendingUp, TrendingDown, Shield, AlertTriangle, CheckCircle2,
     DollarSign, Calendar, BarChart2, Target, Clock, ChevronRight,
     Zap, Activity, ArrowUpRight, ArrowDownRight, Minus,
-    ShieldAlert, ShieldCheck, CircleDot, ArrowUp, ArrowDown, BookOpen
+    ShieldAlert, ShieldCheck, CircleDot, ArrowUp, ArrowDown, BookOpen,
+    Copy, Check
 } from 'lucide-react';
 import { CollapsibleSection } from '@/components/ui/CollapsibleSection';
 import { PlanBCard } from './PlanBCard';
@@ -32,6 +33,8 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
 
     const [isLogging, setIsLogging] = useState(false);
     const [hasLogged, setHasLogged] = useState(false);
+    const [copied, setCopied] = useState(false);
+
 
     useEffect(() => {
         setHasLogged(false);
@@ -496,6 +499,46 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                 </CollapsibleSection>
             </div>
 
+            {/* ── AI Prompt Data (Copy to use with other AI tools) ── */}
+            {data.rawPrompt && (
+                <div className="border border-zinc-800 bg-zinc-950/30 rounded-xl overflow-hidden mb-6">
+                    <div className="px-5 py-4 flex items-center justify-between bg-zinc-900/30">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                                <Copy size={14} className="text-violet-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">AI Prompt Data</h3>
+                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Copy & use with ChatGPT / Claude / Gemini</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(data.rawPrompt || '');
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 2000);
+                            }}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs tracking-wide transition-all active:scale-95 ${copied
+                                ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'
+                                : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-600/20'
+                                }`}
+                        >
+                            {copied ? (
+                                <>
+                                    <Check size={14} />
+                                    <span>COPIED!</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Copy size={14} />
+                                    <span>COPY PROMPT</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* ── Metadata Footer ── */}
             <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-border text-[10px] font-black text-muted-foreground uppercase tracking-widest">
                 <div className="flex items-center gap-4">
@@ -516,7 +559,7 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                 </div>
                 <span>{new Date(data.metadata?.timestamp || Date.now()).toLocaleString()}</span>
             </div>
-        </div >
+        </div>
     );
 }
 

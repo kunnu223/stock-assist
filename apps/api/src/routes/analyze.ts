@@ -20,7 +20,7 @@ import { DailyAnalysis } from '../models';
 import { fetchEnhancedNews } from '../services/news/enhanced';
 import { fetchFundamentals } from '../services/data/fundamentals';
 import { performComprehensiveTechnicalAnalysis, getTechnicalSummary, calculateSplitConfidence, calculatePatternConfluence, detectFundamentalTechnicalConflict } from '../services/analysis';
-import { buildEnhancedPrompt } from '../services/ai/enhancedPrompt';
+import { buildEnhancedPrompt, buildUserFriendlyPrompt } from '../services/ai/enhancedPrompt';
 import { analyzeWithEnsemble } from '../services/ai/ensembleAI';
 import { compareSector } from '../services/data';
 import { calcADX } from '../services/indicators/adx';
@@ -338,7 +338,8 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             patternConfluence,
             ftConflict,
             sectorComparison,
-            multiTimeframe: technicalAnalysis.multiTimeframe
+            multiTimeframe: technicalAnalysis.multiTimeframe,
+            language
         };
         const enhancedPrompt = buildEnhancedPrompt(promptInput);
 
@@ -635,7 +636,10 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
                     volatility: riskMetrics.volatility,
                     riskRewardRatio: riskMetrics.riskRewardRatio,
                     winRate: riskMetrics.winRate
-                }
+                },
+
+                // Raw AI prompt (user-friendly version) for manual use with other AI tools
+                rawPrompt: buildUserFriendlyPrompt(promptInput)
             }
         };
 

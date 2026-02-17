@@ -158,3 +158,100 @@ Provide your analysis in the required JSON format with REALISTIC probabilities.`
 
    return prompt;
 };
+
+/**
+ * Build a user-friendly prompt for copying to other AI tools (ChatGPT, Claude, etc.)
+ * Same data as the enhanced prompt but asks for clear, actionable, human-readable output
+ */
+export const buildUserFriendlyPrompt = (input: EnhancedPromptInput): string => {
+   const { stock, indicators, patterns, news, fundamentals, weeklyIndicators, monthlyIndicators, patternConfluence, ftConflict, sectorComparison, multiTimeframe, language } = input;
+   const { quote } = stock;
+   const { rsi, ma, macd } = indicators;
+
+   const dailyBias = multiTimeframe?.timeframes['1D'].trend || 'neutral';
+   const weeklyBias = multiTimeframe?.timeframes['1W'].trend || 'neutral';
+   const monthlyBias = multiTimeframe?.timeframes['1M'].trend || 'neutral';
+
+   const sr = indicators.sr;
+
+   const langInstruction = language === 'hi'
+      ? '\n\n🗣️ IMPORTANT: Provide your ENTIRE response in HINDI (हिन्दी / Devanagari script). All analysis, reasoning, risks, and trade plan must be in Hindi. Only keep numbers, stock symbols, and price values in English.\n'
+      : '';
+
+   return `You are an expert Indian stock market analyst. Analyze the following stock data and give me a clear, actionable trading recommendation.${langInstruction}
+
+📊 STOCK: ${quote.symbol}
+💰 CURRENT PRICE: ₹${quote.price} (Change: ${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent}%)
+📅 Previous Close: ₹${quote.previousClose}
+📈 Day Range: ₹${quote.dayLow} - ₹${quote.dayHigh}
+📊 Volume: ${quote.volume.toLocaleString()} (${indicators.volume.ratio}x average)
+
+═══════════════════════════════════════
+TECHNICAL INDICATORS
+═══════════════════════════════════════
+
+DAILY:
+• RSI (14): ${rsi.value.toFixed(1)} (${rsi.interpretation})
+• MACD: ${macd.trend}
+• Moving Averages: ${ma.trend} (SMA20: ₹${ma.sma20.toFixed(2)}, SMA50: ₹${ma.sma50.toFixed(2)})
+• Support: ₹${sr.support} | Resistance: ₹${sr.resistance}
+• Pattern: ${patterns.primary ? patterns.primary.name + ' (' + patterns.primary.confidence + '% confidence)' : 'No clear pattern'}
+• Trend: ${patterns.trend.direction} (Strength: ${patterns.trend.strength}%)
+• Daily Bias: ${dailyBias.toUpperCase()}
+
+WEEKLY:
+${weeklyIndicators ? `• RSI: ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation})
+• MACD: ${weeklyIndicators.macd.trend}
+• Trend: ${weeklyIndicators.ma.trend}
+• Weekly Bias: ${weeklyBias.toUpperCase()}` : '• Data unavailable'}
+
+MONTHLY:
+${monthlyIndicators ? `• RSI: ${monthlyIndicators.rsi.value.toFixed(1)} (${monthlyIndicators.rsi.interpretation})
+• MACD: ${monthlyIndicators.macd.trend}
+• Trend: ${monthlyIndicators.ma.trend}
+• Monthly Bias: ${monthlyBias.toUpperCase()}` : '• Data unavailable'}
+
+${patternConfluence ? `TIMEFRAME CONFLUENCE:
+• Bullish: ${patternConfluence.bullishTimeframes.join(', ') || 'None'}
+• Bearish: ${patternConfluence.bearishTimeframes.join(', ') || 'None'}
+• Agreement: ${patternConfluence.score}/100 (${patternConfluence.agreement})` : ''}
+
+${news.breakingNews && news.breakingNews.length > 0 ? `BREAKING NEWS:
+${news.breakingNews.map((n: any) => `• [${n.sentiment.toUpperCase()}] ${n.title}`).join('\n')}
+• Impact: ${news.breakingImpact}` : `NEWS: Overall sentiment is ${news.sentiment} (Score: ${news.sentimentScore}%)`}
+
+FUNDAMENTALS:
+• Valuation: ${fundamentals.valuation} (PE: ${fundamentals.metrics.peRatio})
+• Growth: ${fundamentals.growth}
+${ftConflict?.hasConflict ? `• ⚠️ Fundamental-Technical Conflict: ${ftConflict.conflictType}` : '• No fundamental-technical conflict'}
+
+${sectorComparison ? `SECTOR: ${sectorComparison.verdict} (Outperformance: ${sectorComparison.outperformance ? sectorComparison.outperformance.toFixed(2) + '%' : 'N/A'})` : ''}
+
+═══════════════════════════════════════
+WHAT I NEED FROM YOU
+═══════════════════════════════════════
+
+Based on the above data, give me a CLEAR and CONCISE analysis:
+
+1. 🎯 VERDICT: Is this stock BULLISH or BEARISH right now? (One word + confidence %)
+
+2. 📋 TRADE PLAN (if actionable):
+   • Action: BUY / SELL / WAIT
+   • Entry Price: ₹___
+   • Stop Loss: ₹___ (with % risk)
+   • Target 1: ₹___
+   • Target 2: ₹___
+   • Risk-Reward Ratio: ___
+   • Holding Period: ___ days
+
+3. 📝 KEY REASONING (2-3 lines max):
+   Why this direction? What are the strongest signals?
+
+4. ⚠️ RISKS (bullet points):
+   What could go wrong?
+
+5. 🔑 TRIGGER:
+   What specific price level or event should confirm the trade?
+
+Keep the response SHORT and ACTIONABLE. No fluff. I need to make a trading decision based on this.`;
+};
