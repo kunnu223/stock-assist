@@ -3,7 +3,7 @@
  * @module @stock-assist/api/routes/analytics
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { Trade } from '../models';
 import { calcWinRate, calcProfitFactor } from '@stock-assist/shared';
 import { getAccuracyStats, savePrediction, checkPredictions } from '../services/backtest';
@@ -11,7 +11,7 @@ import { getAccuracyStats, savePrediction, checkPredictions } from '../services/
 export const analyticsRouter = Router();
 
 /** GET /api/analytics - Get performance stats */
-analyticsRouter.get('/', async (_req: Request, res: Response) => {
+analyticsRouter.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         const trades = await Trade.find({ status: 'CLOSED' });
         const aiStats = await getAccuracyStats();
@@ -22,7 +22,6 @@ analyticsRouter.get('/', async (_req: Request, res: Response) => {
         const grossWins = wins.reduce((sum: number, t: any) => sum + (t.profitLoss || 0), 0);
         const grossLosses = Math.abs(losses.reduce((sum: number, t: any) => sum + (t.profitLoss || 0), 0));
 
-        // existing logic for pattern stats...
         const patternMap = new Map<string, { wins: number; losses: number; pnl: number }>();
         trades.forEach((t: any) => {
             const p = t.pattern || 'unknown';
@@ -54,12 +53,12 @@ analyticsRouter.get('/', async (_req: Request, res: Response) => {
             },
         });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        next(error);
     }
 });
 
 /** POST /api/analytics/track - Save prediction for tracking */
-analyticsRouter.post('/track', async (req: Request, res: Response) => {
+analyticsRouter.post('/track', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const prediction = await savePrediction(req.body);
         if (!prediction) {
@@ -67,16 +66,16 @@ analyticsRouter.post('/track', async (req: Request, res: Response) => {
         }
         res.json({ success: true, message: 'Prediction saved for tracking', id: prediction._id });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        next(error);
     }
 });
 
 /** POST /api/analytics/check - Trigger accuracy check (Manual backtest) */
-analyticsRouter.post('/check', async (_req: Request, res: Response) => {
+analyticsRouter.post('/check', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         const result = await checkPredictions();
         res.json({ success: true, message: `Checked ${result.total} predictions`, updated: result.updated });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        next(error);
     }
 });

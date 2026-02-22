@@ -2,33 +2,39 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        node-version: [18, 20]
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm install
-      
-    - name: Shared - Type Check
-      run: npm run tsc -w @stock-assist/shared
-      
-    - name: API - Lint
-      run: npm run lint -w @stock-assist/api
-      
-    - name: Web - Build
-      run: npm run build -w @stock-assist/web
-      env:
-        NEXT_PUBLIC_API_URL: http://localhost:4000
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type check (API)
+        run: npx tsc --noEmit
+        working-directory: apps/api
+
+      - name: Run tests (API)
+        run: npx vitest run
+        working-directory: apps/api
+
+      - name: Build (Web)
+        run: npm run build -w @stock-assist/web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000

@@ -1,15 +1,16 @@
 /**
  * Commodity Analysis Route
- * POST /api/analyze/commodity — Analyze a single commodity with multi-horizon plans
- * GET  /api/analyze/commodity/supported — List supported commodities
- * GET  /api/analyze/commodity/exchanges/:symbol — List supported exchanges for a commodity
  * @module @stock-assist/api/routes/commodity
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { analyzeCommodity, COMMODITY_SYMBOLS } from '../services/commodity';
 import { type Exchange, getSupportedExchanges } from '../services/commodity/exchange';
 import { CommodityPrediction } from '../models';
+import { validate } from '../middleware/validate';
+import { commodityAnalyzeBody } from '../middleware/schemas';
+import { analysisLimiter } from '../middleware/rateLimiter';
+import { logger } from '../config/logger';
 
 export const commodityRouter = Router();
 
@@ -54,10 +55,8 @@ commodityRouter.get('/exchanges/:symbol', (req: Request, res: Response) => {
     });
 });
 
-
-
 /** GET /commodity/accuracy — Get backtesting accuracy stats */
-commodityRouter.get('/accuracy', async (_req: Request, res: Response) => {
+commodityRouter.get('/accuracy', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         const total = await CommodityPrediction.countDocuments({ status: { $ne: 'PENDING' } });
         const wins = await CommodityPrediction.countDocuments({ status: 'TARGET_HIT' });
@@ -66,7 +65,6 @@ commodityRouter.get('/accuracy', async (_req: Request, res: Response) => {
 
         const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
 
-        // Group by commodity
         const byCommodity = await CommodityPrediction.aggregate([
             { $match: { status: { $ne: 'PENDING' } } },
             {
@@ -98,24 +96,15 @@ commodityRouter.get('/accuracy', async (_req: Request, res: Response) => {
             }
         });
     } catch (error) {
-        console.error('Accuracy stats error:', error);
         // Graceful degradation if no DB
         res.json({ success: true, stats: { total: 0, wins: 0, winRate: 0, open: 0, byCommodity: [] } });
     }
 });
 
 /** POST /commodity — Analyze a commodity on a specific exchange */
-commodityRouter.post('/', async (req: Request, res: Response) => {
+commodityRouter.post('/', analysisLimiter, validate({ body: commodityAnalyzeBody }), async (req: Request, res: Response, next: NextFunction) => {
     const startTime = Date.now();
     const { symbol, exchange: rawExchange, language } = req.body;
-
-    if (!symbol) {
-        return res.status(400).json({
-            success: false,
-            error: 'Missing required field: symbol',
-            supported: Object.keys(COMMODITY_SYMBOLS),
-        });
-    }
 
     const key = symbol.toUpperCase().replace(/\s+/g, '');
     const exchange: Exchange = VALID_EXCHANGES.includes(rawExchange?.toUpperCase())
@@ -132,15 +121,15 @@ commodityRouter.post('/', async (req: Request, res: Response) => {
     }
 
     try {
-        console.log(`\n[API] ═══════════════════════════════════════`);
-        console.log(`[API] 🪙 POST /api/analyze/commodity — ${key} on ${exchange} (${language || 'en'})`);
-        console.log(`[API] ═══════════════════════════════════════\n`);
+        logger.info({ symbol: key, exchange, language }, 'Commodity analysis started');
 
         const result = await analyzeCommodity(key, exchange, language);
 
         const elapsed = Date.now() - startTime;
-        console.log(`[API] ✅ Commodity analysis complete: ${key} (${exchange}) in ${(elapsed / 1000).toFixed(1)}s`);
-        console.log(`[API] → Confidence: ${result.confidence}% | Direction: ${result.direction} | Crash Risk: ${result.crashDetection.overallRisk}\n`);
+        logger.info(
+            { symbol: key, exchange, elapsed, confidence: result.confidence, direction: result.direction },
+            'Commodity analysis complete'
+        );
 
         return res.json({
             success: true,
@@ -150,7 +139,7 @@ commodityRouter.post('/', async (req: Request, res: Response) => {
         const elapsed = Date.now() - startTime;
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
 
-        console.error(`[API] ❌ Commodity analysis failed: ${key} (${exchange}) after ${(elapsed / 1000).toFixed(1)}s — ${errorMsg}`);
+        logger.error({ symbol: key, exchange, elapsed, err: error }, 'Commodity analysis failed');
 
         return res.status(500).json({
             success: false,

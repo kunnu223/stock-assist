@@ -17,27 +17,17 @@ import {
 } from './signalClarity';
 import { runQualityGates } from './qualityGates';
 import type { OHLCData } from '@stock-assist/shared';
+import { cache, TTL } from '../cache';
+import { logger } from '../../config/logger';
 
-// ─── In-Memory History Cache (6-hour TTL) ───────────────
-
-interface CachedHistory {
-    data: OHLCData[];
-    timestamp: number;
-}
-
-const historyCache = new Map<string, CachedHistory>();
-const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+// History cache uses unified CacheService
 
 function getCachedHistory(symbol: string): OHLCData[] | null {
-    const cached = historyCache.get(symbol);
-    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
-        return cached.data;
-    }
-    return null;
+    return cache.get<OHLCData[]>(`history:${symbol}`) || null;
 }
 
 function setCachedHistory(symbol: string, data: OHLCData[]): void {
-    historyCache.set(symbol, { data, timestamp: Date.now() });
+    cache.set(`history:${symbol}`, data, TTL.HISTORY);
 }
 
 // ─── Helpers ────────────────────────────────────────────
@@ -187,10 +177,10 @@ export const screenStocksForClarity = async (): Promise<{
     };
 }> => {
     const universe = NIFTY_100;
-    console.log(`\n🔍 [TopStocks] Screening ${universe.length} stocks...`);
+    logger.info({ count: universe.length }, 'Screening stocks');
 
     // ── Stage 0: Pre-Filter (parallel batches of 5) ──
-    console.log(`[TopStocks] Stage 0: Pre-filtering...`);
+    logger.info('Stage 0: Pre-filtering');
     const preFiltered: PreFilterResult[] = [];
     const batches = chunk(universe, 5);
 
@@ -202,10 +192,10 @@ export const screenStocksForClarity = async (): Promise<{
         await delay(1000); // Respect rate limits between batches
     }
 
-    console.log(`[TopStocks] Pre-filter: ${universe.length} → ${preFiltered.length} stocks`);
+    logger.info({ from: universe.length, to: preFiltered.length }, 'Pre-filter complete');
 
     // ── Stage 1: Clarity Filter + Quality Gates ──
-    console.log(`[TopStocks] Stage 1: Clarity analysis + quality gates...`);
+    logger.info('Stage 1: Clarity analysis + quality gates');
     const results: ScreeningResult[] = [];
     let passedClarity = 0;
 
@@ -218,7 +208,7 @@ export const screenStocksForClarity = async (): Promise<{
 
             const { clarity } = result;
             const ageLabel = clarity.signalAge >= 2 ? ` [${clarity.signalAge}-day]` : '';
-            console.log(`  ✅ ${symbol}: ${clarity.summary}${ageLabel} (weighted: ${clarity.weightedScore})`);
+            logger.debug({ symbol, summary: clarity.summary, age: clarity.signalAge, weighted: clarity.weightedScore }, 'Stock passed');
         }
     }
 
@@ -233,8 +223,7 @@ export const screenStocksForClarity = async (): Promise<{
     };
 
     // Filter funnel log
-    console.log(`\n📊 [TopStocks] Filter Funnel:`);
-    console.log(`   NIFTY 100 (${stats.totalScanned}) → Pre-filter (${stats.passedPreFilter}) → Clarity+Gates (${stats.passedQualityGates})`);
+    logger.info({ total: stats.totalScanned, preFilter: stats.passedPreFilter, final: stats.passedQualityGates }, 'Filter funnel');
 
     return { results, stats };
 };
@@ -246,7 +235,7 @@ export const screenStocksForClarity = async (): Promise<{
 export const buildTopPicks = async (
     screeningResults: ScreeningResult[]
 ): Promise<IStockPick[]> => {
-    console.log(`\n🏆 Building top ${Math.min(10, screeningResults.length)} picks...`);
+    logger.info({ count: Math.min(10, screeningResults.length) }, 'Building top picks');
 
     const picks: IStockPick[] = [];
     const top = screeningResults.slice(0, 10);
@@ -293,16 +282,16 @@ export const buildTopPicks = async (
                 signalStrength: clarity.signalStrength,
             });
 
-            console.log(`  #${picks.length} ${clarity.symbol}: ${clarity.direction} (conf ${confidence}%, age ${clarity.signalAge})`);
+            logger.debug({ rank: picks.length, symbol: clarity.symbol, direction: clarity.direction, confidence, age: clarity.signalAge }, 'Pick added');
 
             await delay(300);
         } catch (error) {
-            console.warn(`❌ Error fetching quote for ${clarity.symbol}:`, error);
+            logger.warn({ symbol: clarity.symbol, err: error }, 'Quote fetch error');
         }
     }
 
     picks.sort((a, b) => b.confidence - a.confidence);
-    console.log(`✅ Top ${picks.length} picks ready.\n`);
+    logger.info({ count: picks.length }, 'Top picks ready');
     return picks;
 };
 
@@ -320,19 +309,19 @@ export const getTodayTopStocks = async (forceRefresh: boolean = false): Promise<
             const age = Date.now() - cached.createdAt.getTime();
             const ageMinutes = Math.floor(age / 60000);
 
-            console.log(`📦 Cache hit: Returning ${cached.stocks.length} stocks (${ageMinutes} min old)`);
+            logger.info({ count: cached.stocks.length, ageMinutes }, 'Top stocks cache hit');
             return cached.stocks;
         }
     }
 
-    console.log('🚀 Cache miss or force refresh: Running full enhanced screening...');
+    logger.info('Cache miss or force refresh — running full screening');
     const startTime = Date.now();
 
     // Stage 1: Screen all stocks
     const { results, stats } = await screenStocksForClarity();
 
     if (results.length === 0) {
-        console.warn('⚠️ No stocks passed all filters');
+        logger.warn('No stocks passed all filters');
         return [];
     }
 
@@ -372,11 +361,7 @@ export const getTodayTopStocks = async (forceRefresh: boolean = false): Promise<
     );
 
     // Final summary
-    console.log(`\n✅ [TopStocks] Scan complete in ${elapsedSec}s:`);
-    console.log(`   Avg Confidence: ${avgConfidence}%`);
-    console.log(`   Signal Persistence: ${signalPersistence.age3} strong, ${signalPersistence.age2} moderate, ${signalPersistence.age1} weak`);
-    console.log(`   Direction: ${top10.filter(s => s.direction === 'bullish').length} bullish, ${top10.filter(s => s.direction === 'bearish').length} bearish`);
-    console.log(`   Results cached for ${today}\n`);
+    logger.info({ elapsed: elapsedSec, avgConfidence, persistence: signalPersistence, bullish: top10.filter(s => s.direction === 'bullish').length, bearish: top10.filter(s => s.direction === 'bearish').length }, 'Scan complete');
 
     return top10;
 };
@@ -392,7 +377,7 @@ export const getYesterdayTopStocks = async (): Promise<IStockPick[]> => {
     const cached = await DailyTopStocks.findOne({ date: yesterdayKey });
 
     if (cached) {
-        console.log(`📦 Fallback: Returning yesterday's ${cached.stocks.length} stocks`);
+        logger.info({ count: cached.stocks.length }, 'Returning yesterday fallback');
         return cached.stocks;
     }
 

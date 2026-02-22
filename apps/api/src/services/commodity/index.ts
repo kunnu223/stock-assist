@@ -369,10 +369,31 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     const elapsed = Date.now() - startTime;
     console.log(`[Commodity] âœ… Analysis complete in ${(elapsed / 1000).toFixed(1)}s (model: ${aiModel}, exchange: ${exchange})`);
 
-    // Average AI + system confidence
-    const finalConfidence = aiResult?.confidenceScore
-        ? Math.round((aiResult.confidenceScore + confidence.score) / 2)
-        : confidence.score;
+    // Fix #1: Reconcile AI + system scores (not naive average)
+    let finalConfidence: number;
+    if (aiResult?.confidenceScore) {
+        const aiScore = aiResult.confidenceScore;
+        const sysScore = confidence.score;
+        const aiDirection = (aiResult.overallBias || '').toUpperCase();
+        const sysDirection = confidence.direction;
+
+        // If both agree on direction, boost confidence
+        if (aiDirection === sysDirection) {
+            finalConfidence = Math.round(Math.max(aiScore, sysScore) * 0.7 + Math.min(aiScore, sysScore) * 0.3);
+        }
+        // If they disagree on direction, penalize heavily
+        else if (aiDirection && aiDirection !== 'NEUTRAL' && sysDirection !== 'NEUTRAL') {
+            finalConfidence = Math.round(Math.min(aiScore, sysScore) * 0.6);
+            confidence.factors.push('\u26a0\ufe0f AI and system disagree on direction \u2014 confidence reduced');
+        }
+        // One is neutral — lean toward the decisive one but moderate
+        else {
+            finalConfidence = Math.round((aiScore + sysScore) / 2 * 0.85);
+        }
+        finalConfidence = Math.max(15, Math.min(95, finalConfidence));
+    } else {
+        finalConfidence = confidence.score;
+    }
 
     const analysisResult: CommodityAnalysisResult = {
         commodity: key,
@@ -542,9 +563,25 @@ async function updatePendingPredictions(symbol: string, history: OHLCData[]) {
             status: CommodityPredictionStatus.PENDING
         });
 
+        const EXPIRY_DAYS = 7; // Fix #3: Expire after 7 trading days
+
         for (const pred of pending) {
             // Find history bars since prediction date
             const relevantBars = history.filter(bar => new Date(bar.date) > pred.date);
+
+            // Fix #3: Expire old predictions (7 trading days = ~10 calendar days)
+            if (relevantBars.length >= EXPIRY_DAYS) {
+                const lastBar = relevantBars[relevantBars.length - 1];
+                pred.status = CommodityPredictionStatus.EXPIRED;
+                pred.outcomePrice = lastBar.close;
+                pred.outcomeDate = new Date(lastBar.date);
+                pred.pnlPercent = pred.direction === 'BULLISH'
+                    ? ((lastBar.close - pred.entryPrice) / pred.entryPrice) * 100
+                    : ((pred.entryPrice - lastBar.close) / pred.entryPrice) * 100;
+                await pred.save();
+                continue;
+            }
+
             if (relevantBars.length === 0) continue;
 
             for (const bar of relevantBars) {
@@ -579,7 +616,7 @@ async function updatePendingPredictions(symbol: string, history: OHLCData[]) {
                         pred.status = CommodityPredictionStatus.STOP_HIT;
                         pred.outcomePrice = pred.stopLoss;
                         pred.outcomeDate = new Date(bar.date);
-                        pred.pnlPercent = ((pred.entryPrice - pred.stopLoss) / pred.entryPrice) * 100; // Negative PnL usually
+                        pred.pnlPercent = ((pred.entryPrice - pred.stopLoss) / pred.entryPrice) * 100;
                         await pred.save();
                         break;
                     }
@@ -600,10 +637,10 @@ function buildFallbackToday(
     const atr = indicators.atr || price * 0.015;
     const isBullish = confidence.direction === 'BULLISH';
 
-    // ATR-based realistic levels (risk:reward = 1:2 minimum)
-    const entryLow = price - atr * 0.15;
-    const entryHigh = price + atr * 0.15;
-    const stopLoss = isBullish ? price - atr * 1.0 : price + atr * 1.0;
+    // Fix #6: Wider entry range for commodity volatility (was ±0.15 ATR)
+    const entryLow = price - atr * 0.3;
+    const entryHigh = price + atr * 0.3;
+    const stopLoss = isBullish ? price - atr * 1.2 : price + atr * 1.2;
     const target = isBullish ? price + atr * 2.0 : price - atr * 2.0;
 
     const rsiVal = indicators.rsi?.value?.toFixed(0) || '50';

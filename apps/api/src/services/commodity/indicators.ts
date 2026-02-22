@@ -113,30 +113,53 @@ export function calculateCommodityConfidence(
 ): CommodityConfidenceResult {
     const factors: string[] = [];
 
-    // ── 1. Technical Score (0-100, weight 30%) ──
+    // ── 1. Technical Score (0-100, weight 35%) ──
     let techScore = 50;
 
-    // RSI
+    // RSI — cross-referenced with MA trend (Fix #4)
     const rsi = indicators.rsi.value;
-    if (rsi >= 70) { techScore -= 12; factors.push(`RSI overbought (${rsi})`); }
-    else if (rsi >= 55) { techScore += 15; factors.push(`RSI bullish momentum (${rsi})`); }
-    else if (rsi >= 40) { techScore += 5; factors.push(`RSI neutral (${rsi})`); }
-    else if (rsi >= 30) { techScore += 18; factors.push(`RSI oversold opportunity (${rsi})`); }
-    else { techScore -= 8; factors.push(`RSI extremely oversold (${rsi})`); }
+    const maTrend = indicators.ma.trend;
+    if (rsi >= 70) {
+        techScore -= 12;
+        factors.push(`RSI overbought (${rsi})`);
+    } else if (rsi >= 55) {
+        techScore += 15;
+        factors.push(`RSI bullish momentum (${rsi})`);
+    } else if (rsi >= 40) {
+        techScore += 5;
+        factors.push(`RSI neutral (${rsi})`);
+    } else if (rsi >= 30) {
+        // In a downtrend, oversold RSI = momentum, not opportunity
+        if (maTrend === 'bearish') {
+            techScore -= 5;
+            factors.push(`RSI oversold in downtrend (${rsi}) — momentum, not reversal`);
+        } else {
+            techScore += 12;
+            factors.push(`RSI oversold opportunity (${rsi})`);
+        }
+    } else {
+        if (maTrend === 'bearish') {
+            techScore -= 15;
+            factors.push(`RSI extremely oversold in downtrend (${rsi}) — strong selling`);
+        } else {
+            techScore -= 5;
+            factors.push(`RSI extremely oversold (${rsi}) — possible bounce`);
+        }
+    }
 
     // MACD
     if (indicators.macd.trend === 'bullish') { techScore += 18; factors.push('MACD bullish crossover'); }
     else if (indicators.macd.trend === 'bearish') { techScore -= 15; factors.push('MACD bearish crossover'); }
 
     // Moving averages
-    if (indicators.ma.trend === 'bullish') { techScore += 15; factors.push('Above key MAs — bullish'); }
-    else if (indicators.ma.trend === 'bearish') { techScore -= 15; factors.push('Below key MAs — bearish'); }
+    if (maTrend === 'bullish') { techScore += 15; factors.push('Above key MAs — bullish'); }
+    else if (maTrend === 'bearish') { techScore -= 15; factors.push('Below key MAs — bearish'); }
 
     // Weekly confirmation
     if (weeklyIndicators) {
-        if (weeklyIndicators.ma.trend === indicators.ma.trend) {
+        if (weeklyIndicators.ma.trend === maTrend) {
             techScore += 12;
-            factors.push(`Weekly confirms daily: ${indicators.ma.trend}`);
+            factors.push(`Weekly confirms daily: ${maTrend}`);
         } else {
             techScore -= 8;
             factors.push('Weekly-daily timeframe conflict');
@@ -163,7 +186,8 @@ export function calculateCommodityConfidence(
     const crashScore = Math.max(0, 100 - crashDetection.probability * 2);
 
     // ── Weighted combination ──
-    const weights = { technical: 0.30, seasonality: 0.15, macro: 0.25, priceVolume: 0.15, crashRisk: 0.15 };
+    // Fix #5: Reduce seasonality weight (static data = noise), increase technical
+    const weights = { technical: 0.35, seasonality: 0.08, macro: 0.25, priceVolume: 0.17, crashRisk: 0.15 };
 
     let weightedScore = Math.round(
         techScore * weights.technical +
@@ -173,35 +197,37 @@ export function calculateCommodityConfidence(
         crashScore * weights.crashRisk
     );
 
-    // ── Signal agreement amplifier ──
-    const bullishSignals = [
-        indicators.ma.trend === 'bullish',
-        indicators.macd.trend === 'bullish',
-        indicators.rsi.value > 40 && indicators.rsi.value < 70,
-        seasonality.currentMonth.bias === 'BULLISH',
-        macro.overallBias === 'BULLISH',
-        priceVolume.signal === 'STRONG_BULLISH',
-    ].filter(Boolean).length;
+    // ── Fix #2: Weighted signal agreement (technical 2x, others 1x) ──
+    const bullishWeight =
+        (indicators.ma.trend === 'bullish' ? 2 : 0) +
+        (indicators.macd.trend === 'bullish' ? 2 : 0) +
+        (indicators.rsi.value > 40 && indicators.rsi.value < 70 ? 1 : 0) +
+        (seasonality.currentMonth.bias === 'BULLISH' ? 1 : 0) +
+        (macro.overallBias === 'BULLISH' ? 1 : 0) +
+        (priceVolume.signal === 'STRONG_BULLISH' ? 1 : 0);
 
-    const bearishSignals = [
-        indicators.ma.trend === 'bearish',
-        indicators.macd.trend === 'bearish',
-        indicators.rsi.value > 70,
-        seasonality.currentMonth.bias === 'BEARISH',
-        macro.overallBias === 'BEARISH',
-        priceVolume.signal === 'STRONG_BEARISH',
-    ].filter(Boolean).length;
+    const bearishWeight =
+        (indicators.ma.trend === 'bearish' ? 2 : 0) +
+        (indicators.macd.trend === 'bearish' ? 2 : 0) +
+        (indicators.rsi.value > 70 ? 1 : 0) +
+        (seasonality.currentMonth.bias === 'BEARISH' ? 1 : 0) +
+        (macro.overallBias === 'BEARISH' ? 1 : 0) +
+        (priceVolume.signal === 'STRONG_BEARISH' ? 1 : 0);
 
-    const dominant = Math.max(bullishSignals, bearishSignals);
-    if (dominant >= 5) {
+    // Count for star rating (max 8 weighted points)
+    const dominantWeight = Math.max(bullishWeight, bearishWeight);
+    const totalPossible = 8;
+    const alignmentRatio = dominantWeight / totalPossible;
+
+    if (alignmentRatio >= 0.75) {
         const amp = 15;
         weightedScore = weightedScore > 50 ? Math.min(95, weightedScore + amp) : Math.max(15, weightedScore - amp);
-        factors.push(`🎯 ${dominant}/6 signals aligned — high conviction`);
-    } else if (dominant >= 4) {
+        factors.push(`🎯 Strong alignment (${dominantWeight}/${totalPossible}) — high conviction`);
+    } else if (alignmentRatio >= 0.5) {
         const amp = 10;
         weightedScore = weightedScore > 50 ? Math.min(92, weightedScore + amp) : Math.max(18, weightedScore - amp);
-        factors.push(`${dominant}/6 signals aligned`);
-    } else if (dominant <= 1) {
+        factors.push(`${dominantWeight}/${totalPossible} weighted signals aligned`);
+    } else if (alignmentRatio <= 0.25) {
         weightedScore = Math.round(weightedScore * 0.85 + 50 * 0.15);
         factors.push('Mixed signals — low conviction');
     }
@@ -209,11 +235,11 @@ export function calculateCommodityConfidence(
     // Final clamp
     weightedScore = Math.max(15, Math.min(95, weightedScore));
 
-    // Direction
+    // Direction — weighted voting (Fix #2)
     const isBullish = indicators.ma.trend === 'bullish' || indicators.macd.trend === 'bullish';
     const isBearish = indicators.ma.trend === 'bearish' || indicators.macd.trend === 'bearish';
-    const direction = bullishSignals > bearishSignals ? 'BULLISH'
-        : bearishSignals > bullishSignals ? 'BEARISH' : 'NEUTRAL';
+    const direction = bullishWeight > bearishWeight ? 'BULLISH'
+        : bearishWeight > bullishWeight ? 'BEARISH' : 'NEUTRAL';
 
     // Recommendation
     let recommendation: CommodityConfidenceResult['recommendation'];
@@ -222,19 +248,19 @@ export function calculateCommodityConfidence(
     else if (weightedScore < 40) recommendation = 'WAIT';
     else recommendation = 'HOLD';
 
-    // Signal Strength Stars
+    // Signal Strength Stars (using weighted alignment)
     let stars: 1 | 2 | 3 | 4 | 5;
     let starLabel: string;
-    if (dominant >= 5) {
+    if (alignmentRatio >= 0.75) {
         stars = 5;
         starLabel = 'Strong Setup — High Probability';
-    } else if (dominant >= 4) {
+    } else if (alignmentRatio >= 0.625) {
         stars = 4;
         starLabel = 'Good Setup';
-    } else if (dominant >= 3) {
+    } else if (alignmentRatio >= 0.5) {
         stars = 3;
         starLabel = 'Moderate — Be Cautious';
-    } else if (dominant >= 2) {
+    } else if (alignmentRatio >= 0.375) {
         stars = 2;
         starLabel = 'Weak — Risky Trade';
     } else {
@@ -251,8 +277,8 @@ export function calculateCommodityConfidence(
 
     if (stars <= 2) {
         canTrade = false;
-        tradeReason = `Only ${dominant}/6 signals agree — too much conflict`;
-        tradeSuggestion = 'Wait for 3+ signals to align before entering';
+        tradeReason = `Weighted alignment only ${dominantWeight}/${totalPossible} — too much conflict`;
+        tradeSuggestion = 'Wait for stronger signal alignment before entering';
     } else if (crashHigh) {
         canTrade = false;
         tradeReason = `Crash probability is ${crashDetection.probability}% — high risk environment`;
@@ -269,8 +295,8 @@ export function calculateCommodityConfidence(
         recommendation: canTrade ? recommendation : 'WAIT',
         signalStrength: {
             stars,
-            aligned: dominant,
-            total: 6,
+            aligned: dominantWeight,
+            total: totalPossible,
             label: starLabel,
         },
         tradeability: {

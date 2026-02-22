@@ -6,7 +6,7 @@
  * This is critical for probability calibration and system improvement.
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { Prediction, PredictionStatus } from '../models';
 import {
@@ -17,6 +17,9 @@ import {
     getPromptAdjustments,
     getCalibrationSummary
 } from '../services/backtest';
+import { validate } from '../middleware/validate';
+import { backtestPredictionBody } from '../middleware/schemas';
+import { logger } from '../config/logger';
 
 export const backtestRouter = Router();
 
@@ -39,16 +42,9 @@ const requireDB = (req: Request, res: Response, next: any) => {
  * POST /api/backtest/predictions
  * Save a new prediction from analysis for tracking
  */
-backtestRouter.post('/predictions', async (req: Request, res: Response) => {
+backtestRouter.post('/predictions', validate({ body: backtestPredictionBody }), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { analysis } = req.body;
-
-        if (!analysis) {
-            return res.status(400).json({
-                success: false,
-                error: 'Analysis object required'
-            });
-        }
 
         const prediction = await savePrediction(analysis);
 
@@ -60,7 +56,7 @@ backtestRouter.post('/predictions', async (req: Request, res: Response) => {
             });
         }
 
-        console.log(`[Backtest] ✅ Saved prediction for ${prediction.symbol} (${prediction.bias})`);
+        logger.info({ symbol: prediction.symbol, bias: prediction.bias }, 'Saved prediction');
 
         res.json({
             success: true,
@@ -76,11 +72,7 @@ backtestRouter.post('/predictions', async (req: Request, res: Response) => {
             }
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error saving prediction:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });
 
@@ -88,12 +80,12 @@ backtestRouter.post('/predictions', async (req: Request, res: Response) => {
  * POST /api/backtest/check
  * Check all pending predictions against current market data
  */
-backtestRouter.post('/check', async (_req: Request, res: Response) => {
+backtestRouter.post('/check', async (_req: Request, res: Response, next: NextFunction) => {
     try {
-        console.log('[Backtest] Checking pending predictions...');
+        logger.info('Checking pending predictions');
         const result = await checkPredictions();
 
-        console.log(`[Backtest] ✅ Checked ${result.total} predictions, updated ${result.updated}`);
+        logger.info({ total: result.total, updated: result.updated }, 'Prediction check complete');
 
         res.json({
             success: true,
@@ -102,11 +94,7 @@ backtestRouter.post('/check', async (_req: Request, res: Response) => {
             message: `Checked ${result.total} pending predictions, ${result.updated} outcomes determined`
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error checking predictions:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });
 
@@ -114,7 +102,7 @@ backtestRouter.post('/check', async (_req: Request, res: Response) => {
  * GET /api/backtest/stats
  * Get accuracy statistics from tracked predictions
  */
-backtestRouter.get('/stats', async (_req: Request, res: Response) => {
+backtestRouter.get('/stats', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         if (mongoose.connection.readyState !== 1) {
             return res.json({
@@ -127,29 +115,27 @@ backtestRouter.get('/stats', async (_req: Request, res: Response) => {
         }
         const stats = await getAccuracyStats();
 
-        // Get recent predictions for context
         const recentPredictions = await Prediction.find()
             .sort({ date: -1 })
             .limit(10)
             .lean();
 
-        // Calculate additional insights
         const insights: string[] = [];
 
         if (stats.totalClosed >= 30) {
             if (stats.winRate >= 55) {
-                insights.push(`🏆 Win rate ${stats.winRate.toFixed(1)}% exceeds 55% target`);
+                insights.push(`Win rate ${stats.winRate.toFixed(1)}% exceeds 55% target`);
             } else {
-                insights.push(`⚠️ Win rate ${stats.winRate.toFixed(1)}% below 55% target - review AI prompts`);
+                insights.push(`Win rate ${stats.winRate.toFixed(1)}% below 55% target - review AI prompts`);
             }
 
             if (stats.netPnL > 0) {
-                insights.push(`📈 Net P&L positive (${stats.netPnL.toFixed(2)}%)`);
+                insights.push(`Net P&L positive (${stats.netPnL.toFixed(2)}%)`);
             } else {
-                insights.push(`📉 Net P&L negative (${stats.netPnL.toFixed(2)}%) - adjust thresholds`);
+                insights.push(`Net P&L negative (${stats.netPnL.toFixed(2)}%) - adjust thresholds`);
             }
         } else {
-            insights.push(`📊 Need ${30 - stats.totalClosed} more closed predictions for reliable stats`);
+            insights.push(`Need ${30 - stats.totalClosed} more closed predictions for reliable stats`);
         }
 
         res.json({
@@ -172,11 +158,7 @@ backtestRouter.get('/stats', async (_req: Request, res: Response) => {
             calibrationReady: stats.totalClosed >= 30
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error getting stats:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });
 
@@ -184,7 +166,7 @@ backtestRouter.get('/stats', async (_req: Request, res: Response) => {
  * GET /api/backtest/pending
  * Get all pending predictions
  */
-backtestRouter.get('/pending', async (_req: Request, res: Response) => {
+backtestRouter.get('/pending', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         if (mongoose.connection.readyState !== 1) {
             return res.json({ success: true, count: 0, predictions: [] });
@@ -209,11 +191,7 @@ backtestRouter.get('/pending', async (_req: Request, res: Response) => {
             }))
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error getting pending:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });
 
@@ -221,7 +199,7 @@ backtestRouter.get('/pending', async (_req: Request, res: Response) => {
  * GET /api/backtest/history
  * Get prediction history with filters
  */
-backtestRouter.get('/history', async (req: Request, res: Response) => {
+backtestRouter.get('/history', async (req: Request, res: Response, next: NextFunction) => {
     try {
         if (mongoose.connection.readyState !== 1) {
             return res.json({ success: true, count: 0, predictions: [] });
@@ -232,9 +210,11 @@ backtestRouter.get('/history', async (req: Request, res: Response) => {
         if (status) query.status = status;
         if (symbol) query.symbol = (symbol as string).toUpperCase();
 
+        const parsedLimit = Math.min(parseInt(limit as string) || 50, 200);
+
         const predictions = await Prediction.find(query)
             .sort({ date: -1 })
-            .limit(parseInt(limit as string))
+            .limit(parsedLimit)
             .lean();
 
         res.json({
@@ -258,11 +238,7 @@ backtestRouter.get('/history', async (req: Request, res: Response) => {
             }))
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error getting history:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });
 
@@ -270,12 +246,11 @@ backtestRouter.get('/history', async (req: Request, res: Response) => {
  * GET /api/backtest/calibration
  * Get probability calibration data (predicted vs actual win rates)
  */
-backtestRouter.get('/calibration', async (_req: Request, res: Response) => {
+backtestRouter.get('/calibration', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         if (mongoose.connection.readyState !== 1) {
             return res.json({ success: true, ready: false, message: 'Demo Mode: DB not connected' });
         }
-        // Get all closed predictions grouped by consistency score ranges
         const closed = await Prediction.find({
             status: { $ne: PredictionStatus.PENDING }
         }).lean();
@@ -289,7 +264,6 @@ backtestRouter.get('/calibration', async (_req: Request, res: Response) => {
             });
         }
 
-        // Group by confidence score ranges
         const ranges: Record<string, { predictions: any[], wins: number, total: number }> = {
             '50-60': { predictions: [], wins: 0, total: 0 },
             '60-70': { predictions: [], wins: 0, total: 0 },
@@ -314,7 +288,6 @@ backtestRouter.get('/calibration', async (_req: Request, res: Response) => {
             }
         }
 
-        // Calculate calibration data
         const calibration = Object.entries(ranges).map(([range, data]) => {
             const midpoint = parseInt(range.split('-')[0]) + 5;
             const actualWinRate = data.total > 0 ? (data.wins / data.total) * 100 : 0;
@@ -331,7 +304,6 @@ backtestRouter.get('/calibration', async (_req: Request, res: Response) => {
             };
         }).filter(c => c.sampleSize > 0);
 
-        // Generate recommendations
         const recommendations: string[] = [];
         for (const cal of calibration) {
             if (cal.status === 'OVERCONFIDENT') {
@@ -354,11 +326,7 @@ backtestRouter.get('/calibration', async (_req: Request, res: Response) => {
             }
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error getting calibration:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });
 
@@ -366,12 +334,12 @@ backtestRouter.get('/calibration', async (_req: Request, res: Response) => {
  * GET /api/backtest/calibration/detailed
  * Get detailed calibration data using the calibration service
  */
-backtestRouter.get('/calibration/detailed', async (_req: Request, res: Response) => {
+backtestRouter.get('/calibration/detailed', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         const calibration = await getCalibrationData();
         const summary = await getCalibrationSummary();
 
-        console.log(`[Backtest] 📊 ${summary}`);
+        logger.info({ summary }, 'Calibration data fetched');
 
         res.json({
             success: true,
@@ -379,11 +347,7 @@ backtestRouter.get('/calibration/detailed', async (_req: Request, res: Response)
             summary
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error getting detailed calibration:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });
 
@@ -391,7 +355,7 @@ backtestRouter.get('/calibration/detailed', async (_req: Request, res: Response)
  * GET /api/backtest/prompt-adjustments
  * Get recommended AI prompt adjustments based on calibration
  */
-backtestRouter.get('/prompt-adjustments', async (_req: Request, res: Response) => {
+backtestRouter.get('/prompt-adjustments', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         const adjustments = await getPromptAdjustments();
         const calibration = await getCalibrationData();
@@ -404,11 +368,7 @@ backtestRouter.get('/prompt-adjustments', async (_req: Request, res: Response) =
             totalSamples: calibration.totalSamples
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error getting prompt adjustments:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });
 
@@ -416,7 +376,7 @@ backtestRouter.get('/prompt-adjustments', async (_req: Request, res: Response) =
  * GET /api/backtest/summary
  * Get a quick calibration summary for logging/display
  */
-backtestRouter.get('/summary', async (_req: Request, res: Response) => {
+backtestRouter.get('/summary', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         const summary = await getCalibrationSummary();
         const stats = await getAccuracyStats();
@@ -431,10 +391,6 @@ backtestRouter.get('/summary', async (_req: Request, res: Response) => {
             }
         });
     } catch (error) {
-        console.error('[Backtest] ❌ Error getting summary:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error)
-        });
+        next(error);
     }
 });

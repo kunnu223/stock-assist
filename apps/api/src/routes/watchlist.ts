@@ -1,24 +1,28 @@
-import { Router } from 'express';
+/**
+ * Watchlist Routes
+ * @module @stock-assist/api/routes/watchlist
+ */
+
+import { Router, Request, Response, NextFunction } from 'express';
 import { Watchlist } from '../models/Watchlist';
+import { validate } from '../middleware/validate';
+import { watchlistAddBody, symbolParam } from '../middleware/schemas';
 
 const router = Router();
 
-// GET /api/watchlist - List all followed stocks
-router.get('/', async (req, res) => {
+/** GET /api/watchlist - List all followed stocks */
+router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
         const list = await Watchlist.find().sort({ addedAt: -1 });
         res.json({ success: true, data: list });
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to fetch watchlist' });
+        next(error);
     }
 });
 
-// POST /api/watchlist - Add a stock to watchlist
-router.post('/', async (req, res) => {
+/** POST /api/watchlist - Add a stock to watchlist */
+router.post('/', validate({ body: watchlistAddBody }), async (req: Request, res: Response, next: NextFunction) => {
     const { symbol, notes } = req.body;
-    if (!symbol) {
-        return res.status(400).json({ success: false, message: 'Symbol is required' });
-    }
 
     try {
         const entry = await Watchlist.findOneAndUpdate(
@@ -28,18 +32,18 @@ router.post('/', async (req, res) => {
         );
         res.json({ success: true, data: entry });
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to add to watchlist' });
+        next(error);
     }
 });
 
-// DELETE /api/watchlist/:symbol - Remove a stock from watchlist
-router.delete('/:symbol', async (req, res) => {
+/** DELETE /api/watchlist/:symbol - Remove a stock from watchlist */
+router.delete('/:symbol', validate({ params: symbolParam }), async (req: Request, res: Response, next: NextFunction) => {
     const { symbol } = req.params;
     try {
         await Watchlist.findOneAndDelete({ symbol: symbol.toUpperCase() });
         res.json({ success: true, message: 'Removed from watchlist' });
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to remove from watchlist' });
+        next(error);
     }
 });
 

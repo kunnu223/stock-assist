@@ -6,6 +6,8 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { STOCK_NAMES } from '@stock-assist/shared';
+import { cache, TTL } from '../cache';
+import { logger } from '../../config/logger';
 
 // Local type definitions
 export interface EnhancedNewsItem {
@@ -49,14 +51,7 @@ const IMPACT_KEYWORDS = {
     low: ['analyst', 'rating', 'price target', 'market', 'sector', 'industry']
 };
 
-// Simple in-memory cache (15-minute TTL)
-interface NewsCache {
-    data: EnhancedNewsAnalysis;
-    timestamp: number;
-}
 
-const cache = new Map<string, NewsCache>();
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
  * Enhanced sentiment analysis with confidence scoring
@@ -162,9 +157,9 @@ const analyzeBreakingNews = (news: EnhancedNewsItem[]): {
     // Override if negative sentiment dominates and impact is significant
     const override = negativeCount > positiveCount && impact !== 'LOW';
 
-    console.log(`[enhanced.ts:135] Breaking News Analysis: ${breakingNews.length} items. Impact: ${impact}. Sentiment: ${negativeCount > positiveCount ? 'NEGATIVE' : 'POSITIVE'}`);
+    logger.info({ count: breakingNews.length, impact, sentiment: negativeCount > positiveCount ? 'NEGATIVE' : 'POSITIVE' }, 'Breaking news analysis');
     if (override) {
-        console.log(`[enhanced.ts:137] ⚠️ Breaking negative news override active!`);
+        logger.warn('Breaking negative news override active');
     }
 
     return {
@@ -179,16 +174,12 @@ const analyzeBreakingNews = (news: EnhancedNewsItem[]): {
  * Fetch enhanced news for a stock
  */
 export const fetchEnhancedNews = async (symbol: string): Promise<EnhancedNewsAnalysis> => {
-    const cacheKey = symbol.toUpperCase();
+    const cacheKey = `news:${symbol.toUpperCase()}`;
 
-    // Check cache
-    const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-        console.log(`[EnhancedNews] Cache hit for ${symbol}`);
-        return {
-            ...cached.data,
-            dataFreshness: Math.round((Date.now() - cached.timestamp) / 60000),
-        };
+    const cached = cache.get<EnhancedNewsAnalysis>(cacheKey);
+    if (cached) {
+        logger.debug({ symbol }, 'News cache hit');
+        return cached;
     }
 
     const name = STOCK_NAMES[symbol] || symbol;
@@ -253,13 +244,12 @@ export const fetchEnhancedNews = async (symbol: string): Promise<EnhancedNewsAna
             dataFreshness: 0,
         };
 
-        // Update cache
-        cache.set(cacheKey, { data: result, timestamp: Date.now() });
-        console.log(`[enhanced.ts:227] Fetched ${items.length} news items. Sentiment: ${result.sentiment} (${result.sentimentScore}). Breaking: ${breakingNews.length}`);
+        cache.set(cacheKey, result, TTL.NEWS);
+        logger.info({ symbol, count: items.length, sentiment: result.sentiment, breaking: breakingNews.length }, 'News fetched');
 
         return result;
     } catch (error) {
-        console.warn(`[EnhancedNews] Error fetching ${symbol}:`, (error as Error).message);
+        logger.warn({ symbol, err: (error as Error).message }, 'News fetch error');
         return getDefaultNews();
     }
 };
@@ -279,5 +269,5 @@ const getDefaultNews = (): EnhancedNewsAnalysis => ({
 
 /** Clear news cache (for testing) */
 export const clearNewsCache = (): void => {
-    cache.clear();
+    cache.delByPrefix('news:');
 };

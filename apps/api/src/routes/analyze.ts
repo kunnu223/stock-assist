@@ -3,7 +3,7 @@
  * @module @stock-assist/api/routes/analyze
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getStockData, getMultipleStocks } from '../services/data';
 import { calcIndicators } from '../services/indicators';
 import { analyzePatterns } from '../services/patterns';
@@ -38,17 +38,22 @@ import { calibrateConfidence } from '../services/analysis/calibration';
 import { getRegimeLearningStatus } from '../services/analysis/regimeClassifier';
 import { getModifiersForConditions, getDerivedModifiers } from '../services/analysis/dataDerivedModifiers';
 import { getMarketBreadth } from '../services/analysis/breadth';
+import { validate } from '../middleware/validate';
+import { analyzeSingleBody, analyzeHistoryQuery } from '../middleware/schemas';
+import { analysisLimiter, screeningLimiter } from '../middleware/rateLimiter';
+import { logger } from '../config/logger';
+import { cache as analysisCache, TTL } from '../services/cache';
 
 export const analyzeRouter = Router();
 
 /** GET /api/analyze/stocks - Morning screening */
-analyzeRouter.get('/stocks', async (_req: Request, res: Response) => {
+analyzeRouter.get('/stocks', screeningLimiter, async (_req: Request, res: Response, next: NextFunction) => {
     const start = Date.now();
 
     try {
-        console.log(`[Analyze] Fetching data for stocks: ${DEFAULT_WATCHLIST.join(', ')}`);
+        logger.info({ watchlist: DEFAULT_WATCHLIST }, 'Morning screening started');
         const stocks = await getMultipleStocks(DEFAULT_WATCHLIST);
-        console.log(`[Analyze] Successfully fetched data for ${stocks.length} stocks`);
+        logger.info({ count: stocks.length }, 'Stock data fetched');
 
         const results: any[] = [];
 
@@ -64,7 +69,7 @@ analyzeRouter.get('/stocks', async (_req: Request, res: Response) => {
 
             // Check if we are running out of time
             if (Date.now() - start > TIME_BUDGET_MS) {
-                console.warn(`[Analyze] ⏳ Time budget exceeded (${((Date.now() - start) / 1000).toFixed(1)}s). Skipping remaining stocks.`);
+                logger.warn({ elapsed: ((Date.now() - start) / 1000).toFixed(1) }, 'Time budget exceeded, skipping remaining stocks');
                 break;
             }
 
@@ -77,13 +82,13 @@ analyzeRouter.get('/stocks', async (_req: Request, res: Response) => {
                 const aiFailed = result.warnings?.some((w: string) => w.includes('AI analysis not available'));
                 if (aiFailed) {
                     consecutiveAIFailures++;
-                    console.warn(`[Analyze] ⚠️ Consecutive AI Failure #${consecutiveAIFailures} for ${stock.symbol}`);
+                    logger.warn({ symbol: stock.symbol, count: consecutiveAIFailures }, 'Consecutive AI failure');
                 } else {
-                    consecutiveAIFailures = 0; // Reset on success
+                    consecutiveAIFailures = 0;
                 }
 
                 if (consecutiveAIFailures >= 2) {
-                    console.warn('[Analyze] 🛑 Circuit Breaker triggered! Disabling AI for remaining stocks to prevent timeout.');
+                    logger.warn('Circuit breaker triggered — disabling AI for remaining stocks');
                     skipAI = true;
                 }
             }
@@ -98,7 +103,7 @@ analyzeRouter.get('/stocks', async (_req: Request, res: Response) => {
         const avoid = results.filter((r) => r.category === 'AVOID');
         const neutral = results.filter((r) => r.category === 'NEUTRAL');
 
-        console.log(`[Analyze] ✅ Screening complete - Strong: ${strongSetups.length}, Neutral: ${neutral.length}, Avoid: ${avoid.length}`);
+        logger.info({ strong: strongSetups.length, neutral: neutral.length, avoid: avoid.length }, 'Screening complete');
 
         res.json({
             success: true,
@@ -111,25 +116,24 @@ analyzeRouter.get('/stocks', async (_req: Request, res: Response) => {
             avoid,
         });
     } catch (error) {
-        console.error('[Analyze] ❌ Screening error:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error),
-            message: 'Morning screening failed'
-        });
+        next(error);
     }
 });
 
 /** POST /api/analyze/single - Enhanced single stock analysis */
-analyzeRouter.post('/single', async (req: Request, res: Response) => {
+analyzeRouter.post('/single', analysisLimiter, validate({ body: analyzeSingleBody }), async (req: Request, res: Response, next: NextFunction) => {
     const { symbol, language } = req.body;
 
-    if (!symbol) {
-        return res.status(400).json({ success: false, error: 'Symbol required' });
-    }
-
     const start = Date.now();
-    console.log(`[Analyze] 🚀 Enhanced analysis for: ${symbol} (${language || 'en'})`);
+    logger.info({ symbol, language: language || 'en' }, 'Enhanced analysis started');
+
+    // Check analysis cache (10 min TTL)
+    const cacheKey = `analysis:${symbol.toUpperCase()}:${language || 'en'}`;
+    const cached = analysisCache.get<any>(cacheKey);
+    if (cached) {
+        logger.info({ symbol, ms: Date.now() - start }, 'Analysis cache hit');
+        return res.json({ ...cached, cached: true });
+    }
 
     try {
         // Step 1+2: Parallel fetch of data (fixed: single getStockData call)
@@ -747,28 +751,29 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             ]).catch(err => console.error(`[SignalTracker] Error:`, err));
         }
 
+        // Cache the result for 10 minutes
+        analysisCache.set(cacheKey, response, TTL.ANALYSIS);
         res.json(response);
 
     } catch (error) {
-        console.error('[Analyze] ❌ Enhanced analysis error:', error);
-        res.status(500).json({
-            success: false,
-            error: String(error),
-            message: 'Enhanced analysis failed. Please try again.'
-        });
+        next(error);
     }
 });
 
 /**
  * GET /api/analyze/history - Fetch historical analysis with filters
  */
-analyzeRouter.get('/history', async (req: Request, res: Response) => {
+analyzeRouter.get('/history', validate({ query: analyzeHistoryQuery }), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { symbol, startDate, endDate, minConfidence, minBullish, minBearish } = req.query;
 
         const query: any = {};
 
-        if (symbol) query.symbol = { $regex: new RegExp(symbol as string, 'i') };
+        // Safe regex: escape special chars to prevent ReDoS
+        if (symbol) {
+            const escaped = (symbol as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            query.symbol = { $regex: new RegExp(escaped, 'i') };
+        }
 
         if (startDate || endDate) {
             query.date = {};
@@ -790,8 +795,7 @@ analyzeRouter.get('/history', async (req: Request, res: Response) => {
             data: history
         });
     } catch (error) {
-        console.error('[Analyze] ❌ History fetch error:', error);
-        res.status(500).json({ success: false, error: String(error) });
+        next(error);
     }
 });
 

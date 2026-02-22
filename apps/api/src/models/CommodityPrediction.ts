@@ -61,5 +61,7 @@ const CommodityPredictionSchema = new Schema<ICommodityPrediction>({
 
 // Compound index for finding pending predictions by exchange
 CommodityPredictionSchema.index({ status: 1, exchange: 1 });
+// History lookups by symbol (most recent first)
+CommodityPredictionSchema.index({ symbol: 1, date: -1 });
 
 export const CommodityPrediction = mongoose.model<ICommodityPrediction>('CommodityPrediction', CommodityPredictionSchema);

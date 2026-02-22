@@ -63,4 +63,8 @@ const JournalSchema = new Schema<IJournal>({
     }
 }, { timestamps: true });
 
+// Sort index for listing journals (most recent first)
+JournalSchema.index({ createdAt: -1 });
+JournalSchema.index({ isPinned: 1, createdAt: -1 });
+
 export const Journal = mongoose.model<IJournal>('Journal', JournalSchema);

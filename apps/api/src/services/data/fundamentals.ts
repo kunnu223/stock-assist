@@ -4,6 +4,8 @@
  */
 
 import yahooFinance from '../../config/yahoo';
+import { cache, TTL } from '../cache';
+import { logger } from '../../config/logger';
 
 // Local type definition (matches shared package)
 export interface FundamentalData {
@@ -20,27 +22,19 @@ export interface FundamentalData {
     sectorComparison: 'outperforming' | 'inline' | 'underperforming' | 'unknown';
 }
 
-// Simple in-memory cache (24-hour TTL)
-interface CacheEntry {
-    data: FundamentalData;
-    timestamp: number;
-}
 
-const cache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Fetch fundamental data for a stock
  * Uses Yahoo Finance for basic metrics
  */
 export const fetchFundamentals = async (symbol: string): Promise<FundamentalData> => {
-    const cacheKey = symbol.toUpperCase();
+    const cacheKey = `fundamentals:${symbol.toUpperCase()}`;
 
-    // Check cache
-    const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-        console.log(`[Fundamentals] Cache hit for ${symbol}`);
-        return cached.data;
+    const cached = cache.get<FundamentalData>(cacheKey);
+    if (cached) {
+        logger.debug({ symbol }, 'Fundamentals cache hit');
+        return cached;
     }
 
     try {
@@ -53,7 +47,7 @@ export const fetchFundamentals = async (symbol: string): Promise<FundamentalData
         });
 
         if (!result) {
-            console.warn(`[Fundamentals] No data found for ${symbol}`);
+            logger.warn({ symbol }, 'No fundamental data found');
             return getDefaultFundamentals();
         }
 
@@ -109,13 +103,12 @@ export const fetchFundamentals = async (symbol: string): Promise<FundamentalData
             sectorComparison,
         };
 
-        // Update cache
-        cache.set(cacheKey, { data: fundamentals, timestamp: Date.now() });
-        console.log(`[Fundamentals] Fetched data for ${symbol}: PE=${peRatio}, Growth=${growth}`);
+        cache.set(cacheKey, fundamentals, TTL.FUNDAMENTALS);
+        logger.info({ symbol, pe: peRatio, growth }, 'Fundamentals fetched');
 
         return fundamentals;
     } catch (error) {
-        console.warn(`[Fundamentals] Error fetching ${symbol}:`, (error as Error).message);
+        logger.warn({ symbol, err: (error as Error).message }, 'Fundamentals fetch error');
         return getDefaultFundamentals();
     }
 };
@@ -137,5 +130,5 @@ const getDefaultFundamentals = (): FundamentalData => ({
 
 /** Clear fundamentals cache (for testing) */
 export const clearFundamentalsCache = (): void => {
-    cache.clear();
+    cache.delByPrefix('fundamentals:');
 };

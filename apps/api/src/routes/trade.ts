@@ -3,9 +3,12 @@
  * @module @stock-assist/api/routes/trade
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { Trade } from '../models';
+import { validate } from '../middleware/validate';
+import { tradeCreateBody, tradeUpdateBody, idParam } from '../middleware/schemas';
+import { NotFoundError } from '../middleware/errors';
 
 export const tradeRouter = Router();
 
@@ -22,42 +25,51 @@ const demoTrades: any[] = [
     }
 ];
 
-/** GET /api/trade - Get all trades */
-tradeRouter.get('/', async (_req: Request, res: Response) => {
+/** GET /api/trade - Get all trades (paginated) */
+tradeRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+        const skip = (page - 1) * limit;
+
         if (mongoose.connection.readyState !== 1) {
-            return res.json({ success: true, trades: demoTrades, mode: 'demo' });
+            const paginated = demoTrades.slice(skip, skip + limit);
+            return res.json({ success: true, trades: paginated, total: demoTrades.length, page, limit, mode: 'demo' });
         }
-        const trades = await Trade.find().sort({ entryDate: -1 }).limit(100);
-        res.json({ success: true, trades });
+
+        const [trades, total] = await Promise.all([
+            Trade.find().sort({ entryDate: -1 }).skip(skip).limit(limit),
+            Trade.countDocuments(),
+        ]);
+        res.json({ success: true, trades, total, page, limit });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        next(error);
     }
 });
 
 /** POST /api/trade - Create new trade */
-tradeRouter.post('/', async (req: Request, res: Response) => {
+tradeRouter.post('/', validate({ body: tradeCreateBody }), async (req: Request, res: Response, next: NextFunction) => {
     try {
         if (mongoose.connection.readyState !== 1) {
             const newTrade = { ...req.body, _id: `demo-${Date.now()}`, entryDate: new Date() };
             demoTrades.unshift(newTrade);
-            if (demoTrades.length > 50) demoTrades.pop(); // Prevent memory issues
+            if (demoTrades.length > 50) demoTrades.pop();
             return res.json({ success: true, trade: newTrade, mode: 'demo' });
         }
         const trade = new Trade(req.body);
         await trade.save();
         res.json({ success: true, trade });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        next(error);
     }
 });
 
 /** PUT /api/trade/:id - Update trade (close) */
-tradeRouter.put('/:id', async (req: Request, res: Response) => {
+tradeRouter.put('/:id', validate({ params: idParam, body: tradeUpdateBody }), async (req: Request, res: Response, next: NextFunction) => {
     try {
         if (mongoose.connection.readyState !== 1) {
             const index = demoTrades.findIndex(t => t._id === req.params.id);
-            if (index === -1) return res.status(404).json({ success: false, error: 'Trade not found' });
+            if (index === -1) throw new NotFoundError('Trade');
 
             const trade = { ...demoTrades[index], ...req.body };
             if (trade.exitPrice && trade.entryPrice) {
@@ -74,7 +86,7 @@ tradeRouter.put('/:id', async (req: Request, res: Response) => {
         }
 
         const trade = await Trade.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        if (!trade) return res.status(404).json({ success: false, error: 'Trade not found' });
+        if (!trade) throw new NotFoundError('Trade');
 
         if (trade.exitPrice && trade.entryPrice) {
             const pnl = trade.direction === 'LONG'
@@ -90,12 +102,12 @@ tradeRouter.put('/:id', async (req: Request, res: Response) => {
 
         res.json({ success: true, trade });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        next(error);
     }
 });
 
 /** DELETE /api/trade/:id - Delete trade */
-tradeRouter.delete('/:id', async (req: Request, res: Response) => {
+tradeRouter.delete('/:id', validate({ params: idParam }), async (req: Request, res: Response, next: NextFunction) => {
     try {
         if (mongoose.connection.readyState !== 1) {
             const index = demoTrades.findIndex(t => t._id === req.params.id);
@@ -105,6 +117,6 @@ tradeRouter.delete('/:id', async (req: Request, res: Response) => {
         await Trade.findByIdAndDelete(req.params.id);
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ success: false, error: String(error) });
+        next(error);
     }
 });

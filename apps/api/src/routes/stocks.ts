@@ -3,9 +3,11 @@
  * Endpoints for fetching top stocks screened from NIFTY 100
  */
 
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { NIFTY_100 } from '@stock-assist/shared';
 import { getTodayTopStocks, getYesterdayTopStocks } from '../services/screening/topStocks';
+import { screeningLimiter } from '../middleware/rateLimiter';
+import { logger } from '../config/logger';
 
 const router = express.Router();
 
@@ -13,21 +15,19 @@ const router = express.Router();
  * GET /api/stocks/top-10
  * Get today's top 10 stocks (cached daily)
  */
-router.get('/top-10', async (req: Request, res: Response) => {
+router.get('/top-10', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        console.log('📊 GET /api/stocks/top-10');
+        logger.info('GET /api/stocks/top-10');
 
         let stocks = await getTodayTopStocks(false);
         let isFallback = false;
 
-        // Fallback to yesterday if today's analysis failed
         if (stocks.length === 0) {
-            console.log('⚠️ No stocks for today, falling back to yesterday');
+            logger.warn('No stocks for today, falling back to yesterday');
             stocks = await getYesterdayTopStocks();
             isFallback = true;
         }
 
-        // If still empty, return error
         if (stocks.length === 0) {
             return res.status(503).json({
                 error: 'Unable to fetch top stocks',
@@ -60,12 +60,8 @@ router.get('/top-10', async (req: Request, res: Response) => {
                 },
             },
         });
-    } catch (error: any) {
-        console.error('❌ Error fetching top stocks:', error);
-        res.status(500).json({
-            error: 'Internal server error',
-            message: error.message,
-        });
+    } catch (error) {
+        next(error);
     }
 });
 
@@ -73,9 +69,9 @@ router.get('/top-10', async (req: Request, res: Response) => {
  * POST /api/stocks/top-10/refresh
  * Force refresh today's top stocks (screens all 100 stocks)
  */
-router.post('/top-10/refresh', async (req: Request, res: Response) => {
+router.post('/top-10/refresh', screeningLimiter, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        console.log('🔄 POST /api/stocks/top-10/refresh — Screening', NIFTY_100.length, 'stocks...');
+        logger.info({ totalStocks: NIFTY_100.length }, 'POST /api/stocks/top-10/refresh — Screening stocks');
         const startTime = Date.now();
 
         const stocks = await getTodayTopStocks(true);
@@ -114,12 +110,8 @@ router.post('/top-10/refresh', async (req: Request, res: Response) => {
                 },
             },
         });
-    } catch (error: any) {
-        console.error('❌ Error refreshing top stocks:', error);
-        res.status(500).json({
-            error: 'Internal server error',
-            message: error.message,
-        });
+    } catch (error) {
+        next(error);
     }
 });
 
