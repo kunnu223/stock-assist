@@ -231,33 +231,49 @@ export async function updateSignalOutcomes(symbol: string, history: OHLCData[]):
             const relevantBars = history.filter(bar => new Date(bar.date) > signal.date);
             if (relevantBars.length === 0) continue;
 
+            let currentStopLoss = signal.stopLoss;
+            const initialRisk = Math.abs(signal.entryPrice - signal.stopLoss);
+            const moveStopToBreakevenAt = signal.direction === 'BUY'
+                ? signal.entryPrice + initialRisk
+                : signal.entryPrice - initialRisk;
+
             for (const bar of relevantBars) {
                 const barDate = new Date(bar.date);
                 let hit = false;
 
                 if (signal.direction === 'BUY') {
+                    // Trailing Stop to Breakeven
+                    if (bar.high >= moveStopToBreakevenAt && currentStopLoss < signal.entryPrice) {
+                        currentStopLoss = signal.entryPrice;
+                    }
+
                     if (bar.high >= signal.targetPrice) {
                         signal.status = SignalStatus.TARGET_HIT;
                         signal.outcomePrice = signal.targetPrice;
                         signal.pnlPercent = ((signal.targetPrice - signal.entryPrice) / signal.entryPrice) * 100;
                         hit = true;
-                    } else if (bar.low <= signal.stopLoss) {
+                    } else if (bar.low <= currentStopLoss) {
                         signal.status = SignalStatus.STOP_HIT;
-                        signal.outcomePrice = signal.stopLoss;
-                        signal.pnlPercent = ((signal.stopLoss - signal.entryPrice) / signal.entryPrice) * 100;
+                        signal.outcomePrice = currentStopLoss;
+                        signal.pnlPercent = ((currentStopLoss - signal.entryPrice) / signal.entryPrice) * 100;
                         hit = true;
                     }
                 } else {
                     // SELL
+                    // Trailing Stop to Breakeven
+                    if (bar.low <= moveStopToBreakevenAt && currentStopLoss > signal.entryPrice) {
+                        currentStopLoss = signal.entryPrice;
+                    }
+
                     if (bar.low <= signal.targetPrice) {
                         signal.status = SignalStatus.TARGET_HIT;
                         signal.outcomePrice = signal.targetPrice;
                         signal.pnlPercent = ((signal.entryPrice - signal.targetPrice) / signal.entryPrice) * 100;
                         hit = true;
-                    } else if (bar.high >= signal.stopLoss) {
+                    } else if (bar.high >= currentStopLoss) {
                         signal.status = SignalStatus.STOP_HIT;
-                        signal.outcomePrice = signal.stopLoss;
-                        signal.pnlPercent = ((signal.entryPrice - signal.stopLoss) / signal.entryPrice) * 100;
+                        signal.outcomePrice = currentStopLoss;
+                        signal.pnlPercent = ((signal.entryPrice - currentStopLoss) / signal.entryPrice) * 100;
                         hit = true;
                     }
                 }
@@ -402,13 +418,46 @@ export async function getEmpiricalProbability(
     const conditionLabel = `${compressRegime(regime)}|${alignmentBucket}|${adxBucket}|${volumeBucket}`;
 
     try {
-        // Query resolved signals with this exact condition hash
-        const resolved = await SignalRecord.find({
+        let resolved = await SignalRecord.find({
             conditionHash: hash,
             status: { $ne: SignalStatus.PENDING }
         }).lean();
 
-        const sampleSize = resolved.length;
+        let sampleSize = resolved.length;
+        let isFuzzy = false;
+
+        // NEW: Fuzzy Regime Matching
+        if (sampleSize < MIN_SAMPLES_FOR_EMPIRICAL) {
+            // Helper to get adjacent buckets
+            const getAdjacent = (b: string) => {
+                if (b === 'STRONG' || b === 'HIGH') return [b, b === 'STRONG' ? 'MODERATE' : 'NORMAL'];
+                if (b === 'WEAK' || b === 'LOW') return [b, b === 'WEAK' ? 'MODERATE' : 'NORMAL'];
+                if (b === 'MODERATE') return ['STRONG', 'MODERATE', 'WEAK'];
+                if (b === 'NORMAL') return ['HIGH', 'NORMAL', 'LOW'];
+                return [b];
+            };
+
+            const getRegimesForCompressed = (compressed: string) => {
+                if (compressed === 'TREND') return ['TRENDING_STRONG', 'TRENDING_WEAK'];
+                if (compressed === 'VOLATILE') return ['VOLATILE', 'EVENT_DRIVEN'];
+                return ['RANGE'];
+            };
+
+            const fuzzyQuery = {
+                regime: { $in: getRegimesForCompressed(compressRegime(regime)) },
+                alignmentBucket,
+                adxBucket: { $in: getAdjacent(adxBucket) },
+                volumeBucket: { $in: getAdjacent(volumeBucket) },
+                status: { $ne: SignalStatus.PENDING }
+            };
+
+            const fuzzyResolved = await SignalRecord.find(fuzzyQuery).lean();
+            if (fuzzyResolved.length > sampleSize) {
+                resolved = fuzzyResolved;
+                sampleSize = resolved.length;
+                isFuzzy = true;
+            }
+        }
 
         if (sampleSize === 0) {
             return {
@@ -474,7 +523,7 @@ export async function getEmpiricalProbability(
             expectancy: Number(expectancy.toFixed(3)),
             reliable,
             message: reliable
-                ? `Empirical probability from ${sampleSize} samples: ${winRate}% win rate (expectancy[${expectancyMethod}]: ${expectancy.toFixed(3)}%)`
+                ? `Empirical probability from ${sampleSize} samples${isFuzzy ? ' (Fuzzy Match)' : ''}: ${winRate}% win rate (expectancy[${expectancyMethod}]: ${expectancy.toFixed(3)}%)`
                 : `Low reliability (${sampleSize}/${MIN_SAMPLES_FOR_EMPIRICAL} samples). Win rate ${winRate}%${reliabilityNote}. Expectancy[${expectancyMethod}]: ${expectancy.toFixed(3)}%`,
         };
     } catch (error) {

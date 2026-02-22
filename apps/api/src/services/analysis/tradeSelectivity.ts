@@ -24,6 +24,9 @@ export interface SelectivityContext {
     volumeRatio: number;
     ftConflictSeverity: 'none' | 'low' | 'medium' | 'high';
     earningsProximity?: number;     // Days to nearest earnings, undefined if unknown
+    macdDivergence?: 'bullish' | 'bearish' | 'none'; // New phase 6 rule
+    currentPrice?: number;
+    vwap?: number;
 }
 
 export interface SelectivityGate {
@@ -36,6 +39,8 @@ export interface SelectivityGate {
         volume: { passed: boolean; value: number; threshold: number };
         ftConflict: { passed: boolean; severity: string };
         earnings: { passed: boolean; days?: number; threshold: number };
+        macdDivergence: { passed: boolean; divergence: string };
+        vwapExtension: { passed: boolean; extension: number; maxExtension: number };
     };
     passedCount: number;
     totalGates: number;
@@ -49,6 +54,7 @@ const THRESHOLDS = {
     minVolume: 1.2,
     maxFTConflict: 'medium' as const,
     earningsWindow: 3,
+    maxVwapExtension: 1.05, // Reject if price is > 5% above weekly VWAP
 };
 
 const CONFLICT_SEVERITY_ORDER = ['none', 'low', 'medium', 'high'];
@@ -120,6 +126,19 @@ export function evaluateSelectivity(context: SelectivityContext): SelectivityGat
             days: context.earningsProximity,
             threshold: THRESHOLDS.earningsWindow,
         },
+        macdDivergence: {
+            passed: context.macdDivergence !== 'bearish', // Reject bearish divergence
+            divergence: context.macdDivergence || 'none',
+        },
+        vwapExtension: {
+            passed: context.currentPrice && context.vwap && context.vwap > 0
+                ? (context.currentPrice / context.vwap) <= THRESHOLDS.maxVwapExtension
+                : true,
+            extension: context.currentPrice && context.vwap && context.vwap > 0
+                ? (context.currentPrice / context.vwap)
+                : 1,
+            maxExtension: THRESHOLDS.maxVwapExtension,
+        },
     };
 
     const passedCount = Object.values(gateResults).filter(g => g.passed).length;
@@ -130,8 +149,10 @@ export function evaluateSelectivity(context: SelectivityContext): SelectivityGat
         !gateResults.alignment.passed ? 'Alignment' :
             !gateResults.volume.passed ? 'Volume' :
                 !gateResults.ftConflict.passed ? 'FT-Conflict' :
-                    !gateResults.earnings.passed ? 'Earnings' :
-                        undefined;
+                    !gateResults.macdDivergence.passed ? 'MACD-Divergence' :
+                        !gateResults.vwapExtension.passed ? 'VWAP-Extension' :
+                            !gateResults.earnings.passed ? 'Earnings' :
+                                undefined;
 
     const allPassed = passedCount === totalGates;
 
@@ -152,6 +173,11 @@ export function evaluateSelectivity(context: SelectivityContext): SelectivityGat
         reason = `Volume too low (${context.volumeRatio.toFixed(1)}x < ${THRESHOLDS.minVolume}x) — weak conviction`;
     } else if (rejectedBy === 'FT-Conflict') {
         reason = `Fundamental-Technical conflict (${context.ftConflictSeverity}) — mixed signals`;
+    } else if (rejectedBy === 'MACD-Divergence') {
+        reason = `Hidden bearish divergence detected on MACD — possible trend exhaustion`;
+    } else if (rejectedBy === 'VWAP-Extension') {
+        const ext = ((gateResults.vwapExtension.extension - 1) * 100).toFixed(1);
+        reason = `Price overextended above weekly VWAP (+${ext}%) — chasing risk too high`;
     } else if (rejectedBy === 'Earnings') {
         reason = `Within ${context.earningsProximity}d of earnings (window: ±${THRESHOLDS.earningsWindow}d) — event risk`;
     } else {

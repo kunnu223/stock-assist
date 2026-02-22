@@ -6,6 +6,7 @@
 
 import type { OHLCData } from '@stock-assist/shared';
 import type { DXYData, CommodityPriceData } from './data';
+import { calcADX } from '../indicators/adx';
 
 export interface USDCorrelation {
     direction: 'INVERSE' | 'POSITIVE' | 'NONE';
@@ -60,6 +61,11 @@ function analyzeUSDCorrelation(
         isConfirming = (usdUp && commodityUp) || (!usdUp && !commodityUp);
     }
 
+    // New logic: DXY Trend Acceleration
+    const dxyAdx = calcADX(dxy.history);
+    // DXY in an accelerating uptrend (+DI > -DI and ADX is strong)
+    const isDxyAcceleratingUp = dxyAdx.adx > 25 && dxyAdx.plusDI > dxyAdx.minusDI;
+
     // If fighting correlation, it's a warning signal
     const isFighting = !isConfirming && Math.abs(dxy.changePercent) > 0.3;
 
@@ -69,6 +75,10 @@ function analyzeUSDCorrelation(
     if (corrStrength < 0.3) {
         impact = 'USD has minimal impact on this commodity';
         modifier = 0;
+    } else if (corrDirection === 'INVERSE' && isDxyAcceleratingUp && commodityUp) {
+        // Severe penalty for trying to buy an inversely correlated commodity while DXY is ripping
+        impact = `CRITICAL WARNING: DXY is in an accelerating uptrend (ADX ${dxyAdx.adx.toFixed(0)}). Highly risky to long ${symbol}.`;
+        modifier = -15;
     } else if (isConfirming) {
         if (dxy.trend30d === 'weakening') {
             impact = `USD weakening (${dxy.trend30d}) supports ${symbol} upside`;

@@ -208,10 +208,15 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
 
         // NEW: Step 3.6: Detect fundamental-technical conflicts
         console.log(`[analyze.ts:179] 🔍 Checking fundamental-technical conflicts...`);
+        const volumeRatio = technicalAnalysis.indicators.daily.volume.ratio;
+        const alignmentScore = technicalAnalysis.multiTimeframe.alignmentScore || 50;
+
         const ftConflict = detectFundamentalTechnicalConflict(
             {
                 bias: confidenceResult.recommendation === 'BUY' ? 'BULLISH' : confidenceResult.recommendation === 'SELL' ? 'BEARISH' : 'NEUTRAL',
-                confidenceScore: confidenceResult.score
+                confidenceScore: confidenceResult.score,
+                alignmentScore: alignmentScore,
+                volumeRatio: volumeRatio
             },
             fundamentals
         );
@@ -223,8 +228,6 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
         console.log(`[analyze.ts:192] 📉 Sector Verdict: ${sectorComparison.verdict}, Outperformance: ${sectorComparison.outperformance}%, Modifier: ${sectorComparison.confidenceModifier}%`);
 
         // Condition variables used by modifiers, selectivity, and signal tracking
-        const volumeRatio = technicalAnalysis.indicators.daily.volume.ratio;
-        const alignmentScore = technicalAnalysis.multiTimeframe.alignmentScore || 50;
         const isBullishBreakout = confidenceResult.recommendation === 'BUY' && stock.quote.changePercent > 1;
         const isBearishBreakout = confidenceResult.recommendation === 'SELL' && stock.quote.changePercent < -1;
         const volumeGatePassed = volumeRatio >= 1.2;
@@ -271,6 +274,9 @@ analyzeRouter.post('/single', async (req: Request, res: Response) => {
             alignmentScore,
             volumeRatio,
             ftConflictSeverity: ftSeverity,
+            macdDivergence: technicalAnalysis.indicators.daily.macd.divergence,
+            currentPrice: stock.quote.price,
+            vwap: technicalAnalysis.indicators.daily.vwap
         });
         console.log(`[Analyze] 🛡️ Selectivity: ${selectivity.passed ? 'PASSED' : 'REJECTED'} (${selectivity.passedCount}/${selectivity.totalGates} gates) — ${selectivity.reason}`);
 

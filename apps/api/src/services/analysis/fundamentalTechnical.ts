@@ -18,6 +18,8 @@ export interface FundamentalTechnicalConflict {
 export interface TechnicalContext {
     bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
     confidenceScore: number;
+    alignmentScore?: number;
+    volumeRatio?: number;
 }
 
 /**
@@ -36,26 +38,33 @@ export function detectFundamentalTechnicalConflict(
     const valuation = fundamentals.valuation;
 
     if (technical.bias === 'BULLISH') {
-        // Bullish technical but overvalued fundamentals
-        if (valuation === 'overvalued' && peRatio && peRatio > 30) {
-            conflictType = 'OVERVALUED_BULLISH';
-            confidenceAdjustment = -15;
-            details.push(`Stock is technically bullish but fundamentally overvalued (P/E ${peRatio.toFixed(1)})`);
-        }
+        const isTurnaroundPlay = (technical.alignmentScore ?? 0) > 85 && (technical.volumeRatio ?? 0) > 2.0;
 
-        // Bullish technical but weak growth
-        if (fundamentals.growth === 'weak') {
-            conflictType = 'WEAK_GROWTH_BULLISH';
-            confidenceAdjustment = Math.min(confidenceAdjustment, -10);
-            details.push(`Bullish technical setup but ${fundamentals.growth} earnings growth`);
-        }
+        if (isTurnaroundPlay) {
+            conflictType = 'NONE';
+            confidenceAdjustment = +10; // Boost
+            details.push(`Turnaround/Momentum Play: Massive institutional volume (${technical.volumeRatio!.toFixed(1)}x) and strong multi-TF alignment overrides fundamental weakness.`);
+        } else {
+            // Bullish technical but overvalued fundamentals
+            if (valuation === 'overvalued' && peRatio && peRatio > 30) {
+                conflictType = 'OVERVALUED_BULLISH';
+                confidenceAdjustment = -15;
+                details.push(`Stock is technically bullish but fundamentally overvalued (P/E ${peRatio.toFixed(1)})`);
+            }
 
-        // Bullish technical + undervalued = boost
-        if (valuation === 'undervalued') {
-            confidenceAdjustment = +15;
-            details.push(`Strong fundamental support: undervalued with ${fundamentals.growth} growth`);
-        }
+            // Bullish technical but weak growth
+            if (fundamentals.growth === 'weak') {
+                conflictType = 'WEAK_GROWTH_BULLISH';
+                confidenceAdjustment = Math.min(confidenceAdjustment, -10);
+                details.push(`Bullish technical setup but ${fundamentals.growth} earnings growth`);
+            }
 
+            // Bullish technical + undervalued = boost
+            if (valuation === 'undervalued') {
+                confidenceAdjustment = +15;
+                details.push(`Strong fundamental support: undervalued with ${fundamentals.growth} growth`);
+            }
+        }
     } else if (technical.bias === 'BEARISH') {
         // Bearish technical but undervalued fundamentals
         if (valuation === 'undervalued' && fundamentals.growth === 'strong') {

@@ -44,6 +44,7 @@ export interface MACDResult {
     signal: number;
     histogram: number;
     trend: 'bullish' | 'bearish' | 'neutral';
+    divergence?: 'bullish' | 'bearish' | 'none';
 }
 
 /** All technical indicators combined */
@@ -54,4 +55,5 @@ export interface TechnicalIndicators {
     volume: VolumeAnalysis;
     macd: MACDResult;
     atr: number;
+    vwap?: number;
 }
