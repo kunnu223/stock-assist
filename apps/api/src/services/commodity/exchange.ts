@@ -67,13 +67,13 @@ const MCX_CONFIGS: Record<string, MCXConversionConfig> = {
     GOLD: {
         unit: '₹/10g',
         conversionFactor: 10 / 31.1035,  // troy oz → 10 grams
-        dutyMultiplier: 1.065,            // ~6% import duty + 0.5% cess (post July 2024 budget cut)
+        dutyMultiplier: 1.035,            // ~5% duty & local discount (post Feb 2026 budget cut)
         spotDiscountPercent: -0.3,        // Spot usually at slight premium in India
     },
     SILVER: {
         unit: '₹/kg',
         conversionFactor: 1000 / 31.1035, // troy oz → kg
-        dutyMultiplier: 1.07,             // ~6% duty + 1% cess (post July 2024 budget cut)
+        dutyMultiplier: 1.034,            // effective premium matching current MCX parity (~265k) vs COMEX
         spotDiscountPercent: -0.5,
     },
     CRUDEOIL: {
@@ -260,7 +260,7 @@ export async function buildExchangePricing(
         atr: Math.round(convertPrice(technicals.atr, commodity, exchange, usdInr) * 100) / 100,
         usdInr,
         conversionNote: exchange === 'MCX'
-            ? `Converted from COMEX at ₹${usdInr.toFixed(2)}/USD with ${((config?.dutyMultiplier || 1) - 1) * 100}% import duty+GST. Unit: ${info.unit}`
+            ? `Converted from COMEX at ₹${usdInr.toFixed(2)}/USD including ~${(((config?.dutyMultiplier || 1) - 1) * 100).toFixed(1)}% local market premium/duty. Unit: ${info.unit}`
             : `Spot/Hazar estimate based on MCX with ${Math.abs(config?.spotDiscountPercent || 0)}% ${(config?.spotDiscountPercent || 0) < 0 ? 'premium' : 'discount'}. Unit: ${info.unit}`,
     };
 }
