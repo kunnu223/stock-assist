@@ -6,6 +6,7 @@
 import Groq from 'groq-sdk';
 import type { StockAnalysis } from '@stock-assist/shared';
 import { buildPrompt, type PromptInput } from './prompt';
+import { logger } from '../../config/logger';
 
 let groqClient: Groq | null = null;
 
@@ -53,7 +54,7 @@ export const analyzeWithGroq = async (input: PromptInput): Promise<StockAnalysis
 
         for (const modelName of modelsToTry) {
             try {
-                console.log(`[Groq] Attempting with model: ${modelName}`);
+                logger.debug({ model: modelName }, 'Groq model attempt');
 
                 const completion = await client.chat.completions.create({
                     model: modelName,
@@ -73,34 +74,34 @@ export const analyzeWithGroq = async (input: PromptInput): Promise<StockAnalysis
 
                 const text = completion.choices[0]?.message?.content;
                 if (!text) {
-                    console.warn(`[Groq] Empty response from ${modelName}`);
+                    logger.warn({ model: modelName }, 'Groq empty response');
                     continue;
                 }
 
-                console.log(`[Groq] ✅ Success with ${modelName}`);
+                logger.info({ model: modelName }, 'Groq analysis success');
                 return parseResponse(text);
             } catch (error) {
                 const msg = (error as Error).message;
 
                 // Rate limit - try next model
                 if (msg.includes('429') || msg.includes('rate_limit')) {
-                    console.warn(`[Groq] ⏳ Rate limit on ${modelName}, trying next...`);
+                    logger.warn({ model: modelName }, 'Groq rate limit, trying next model');
                     continue;
                 }
 
-                console.warn(`[Groq] ⚠️ Failed with ${modelName}: ${msg}`);
+                logger.warn({ model: modelName, error: msg }, 'Groq model failed');
                 continue;
             }
         }
     } catch (error) {
         const msg = (error as Error).message;
         if (msg.includes('GROQ_API_KEY')) {
-            console.log('[Groq] No API key configured');
+            logger.info('Groq: No API key configured');
         } else {
-            console.error(`[Groq] Error: ${msg}`);
+            logger.error({ error: msg }, 'Groq error');
         }
     }
 
-    console.warn('[Groq] ❌ All models failed');
+    logger.error('Groq: All models failed');
     return null;
 };

@@ -24,6 +24,7 @@ import { errorHandler } from './middleware/errors';
 import { responseTimeMiddleware } from './middleware/responseTime';
 import { cache } from './services/cache';
 import { metricsRouter } from './routes/metrics';
+import { docsRouter } from './routes/docs';
 
 // Load environment variables
 dotenv.config();
@@ -109,6 +110,7 @@ app.use('/api/stocks', stocksRouter);
 app.use('/api/analyze/commodity', commodityRouter);
 app.use('/api/journal', journalRouter);
 app.use('/metrics', metricsRouter);
+app.use('/api/docs', docsRouter);
 
 // ═══════════════════════════════════════════════════════════════
 // GLOBAL ERROR HANDLER (must be LAST middleware)

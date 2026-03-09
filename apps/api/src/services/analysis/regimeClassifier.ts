@@ -19,6 +19,7 @@
 
 import type { MarketRegime } from '../../models/SignalRecord';
 import { SignalRecord, SignalStatus } from '../../models/SignalRecord';
+import { logger } from '../../config/logger';
 
 export interface RegimeInput {
     adxValue: number;
@@ -183,7 +184,7 @@ export async function getEmpiricalWeightsForRegime(
             reliable: totalSamples >= MIN_SIGNALS_FOR_EMPIRICAL_WEIGHTS,
         };
     } catch (error) {
-        console.error(`[RegimeClassifier] Error computing empirical weights for ${regime}:`, error);
+        logger.error(`[RegimeClassifier] Error computing empirical weights for ${regime}:`, error);
         return null;
     }
 }

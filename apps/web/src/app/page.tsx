@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, TrendingUp, TrendingDown, BarChart3, Zap, ShieldCheck, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
 
 interface IndicatorSignal {
@@ -24,45 +25,47 @@ interface TopStock {
     updatedAt: string;
 }
 
+interface TopStocksResponse {
+    success: boolean;
+    stocks: TopStock[];
+    totalScanned: number;
+    updatedAt: string;
+    message?: string;
+}
+
+async function fetchTopStocks(): Promise<TopStocksResponse> {
+    const res = await fetch('/api/stocks/top-10');
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Failed to fetch stocks');
+    return data;
+}
+
+async function refreshTopStocks(): Promise<TopStocksResponse> {
+    const res = await fetch('/api/stocks/top-10/refresh', { method: 'POST' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Failed to refresh stocks');
+    return data;
+}
+
 export default function Dashboard() {
-    const [loading, setLoading] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
-    const [topStocks, setTopStocks] = useState<TopStock[]>([]);
-    const [totalScanned, setTotalScanned] = useState(0);
-    const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const queryClient = useQueryClient();
 
-    useEffect(() => {
-        fetchTopStocks();
-    }, []);
+    const { data, isLoading, error } = useQuery({
+        queryKey: ['topStocks'],
+        queryFn: fetchTopStocks,
+    });
 
-    const fetchTopStocks = async (refresh: boolean = false) => {
-        if (refresh) setRefreshing(true);
-        else setLoading(true);
+    const refreshMutation = useMutation({
+        mutationFn: refreshTopStocks,
+        onSuccess: (freshData) => {
+            queryClient.setQueryData(['topStocks'], freshData);
+        },
+    });
 
-        try {
-            const url = refresh ? '/api/stocks/top-10/refresh' : '/api/stocks/top-10';
-            const method = refresh ? 'POST' : 'GET';
-
-            const res = await fetch(url, { method });
-            const data = await res.json();
-
-            if (data.success) {
-                setTopStocks(data.stocks);
-                setTotalScanned(data.totalScanned || 0);
-                setUpdatedAt(new Date(data.updatedAt));
-                setError(null);
-            } else {
-                setError(data.message || 'Failed to fetch stocks');
-            }
-        } catch (err) {
-            console.error('Failed to fetch top stocks:', err);
-            setError('Unable to load stocks. Please try again.');
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    };
+    const topStocks = data?.stocks || [];
+    const totalScanned = data?.totalScanned || 0;
+    const updatedAt = data?.updatedAt ? new Date(data.updatedAt) : null;
+    const displayError = error?.message || refreshMutation.error?.message || null;
 
     const getTimeAgo = () => {
         if (!updatedAt) return '';
@@ -96,13 +99,13 @@ export default function Dashboard() {
                 </div>
                 <div className="flex flex-col items-end gap-3">
                     <button
-                        onClick={() => fetchTopStocks(true)}
-                        disabled={refreshing}
+                        onClick={() => refreshMutation.mutate()}
+                        disabled={refreshMutation.isPending}
                         className="flex items-center gap-2 px-4 py-2 md:px-6 md:py-3 bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-all font-bold uppercase tracking-wider text-[10px] disabled:opacity-50 backdrop-blur-sm"
                     >
-                        <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                        <span className="md:hidden">{refreshing ? 'Scanning...' : 'Refresh'}</span>
-                        <span className="hidden md:inline">{refreshing ? 'Screening 100 Stocks...' : 'Re-Screen All Stocks'}</span>
+                        <RefreshCw className={`w-3.5 h-3.5 ${refreshMutation.isPending ? 'animate-spin' : ''}`} />
+                        <span className="md:hidden">{refreshMutation.isPending ? 'Scanning...' : 'Refresh'}</span>
+                        <span className="hidden md:inline">{refreshMutation.isPending ? 'Screening 100 Stocks...' : 'Re-Screen All Stocks'}</span>
                     </button>
                     {updatedAt && (
                         <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
@@ -112,11 +115,11 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {error && !loading && (
+            {displayError && !isLoading && (
                 <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-8 text-center animate-in fade-in zoom-in-95 duration-500">
-                    <p className="text-rose-500 font-bold uppercase tracking-widest text-xs mb-4">{error}</p>
+                    <p className="text-rose-500 font-bold uppercase tracking-widest text-xs mb-4">{displayError}</p>
                     <button
-                        onClick={() => fetchTopStocks()}
+                        onClick={() => queryClient.invalidateQueries({ queryKey: ['topStocks'] })}
                         className="text-primary-500 font-black uppercase tracking-widest text-[10px] border border-primary-500/20 px-4 py-2 rounded hover:bg-primary-500/5 transition-all"
                     >
                         Re-Attempt Connection
@@ -136,7 +139,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {loading ? (
+                    {isLoading ? (
                         [1, 2, 3, 4, 5, 6].map(i => (
                             <div key={i} className="premium-card h-80 rounded-xl animate-pulse bg-zinc-900/50 border-border" />
                         ))
@@ -178,7 +181,7 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {!loading && !error && topStocks.length === 0 && (
+            {!isLoading && !displayError && topStocks.length === 0 && (
                 <div className="py-48 text-center border border-dashed border-border rounded-xl bg-zinc-950/20">
                     <div className="max-w-xs mx-auto space-y-4">
                         <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mx-auto border border-border">
@@ -187,7 +190,7 @@ export default function Dashboard() {
                         <h3 className="text-xl font-bold text-foreground tracking-tight italic">DATASET EMPTY</h3>
                         <p className="text-muted-foreground font-medium text-sm px-4">Screen 100 NSE stocks to discover high-clarity setups.</p>
                         <button
-                            onClick={() => fetchTopStocks(true)}
+                            onClick={() => refreshMutation.mutate()}
                             className="text-primary-500 text-[10px] font-black uppercase tracking-widest hover:text-primary-400 transition-colors"
                         >
                             Start Screening

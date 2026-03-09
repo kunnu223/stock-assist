@@ -24,6 +24,7 @@
 
 import { NIFTY_100 } from '@stock-assist/shared';
 import { fetchHistory } from '../data';
+import { logger } from '../../config/logger';
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -107,7 +108,7 @@ export async function getMarketBreadth(): Promise<BreadthResult> {
         return breadthCache.result;
     }
 
-    console.log(`[Breadth] 📊 Calculating market breadth for NIFTY 100 (${NIFTY_100.length} stocks)...`);
+    logger.info(`[Breadth] 📊 Calculating market breadth for NIFTY 100 (${NIFTY_100.length} stocks)...`);
 
     let aboveCount = 0;
     let belowCount = 0;
@@ -174,7 +175,7 @@ export async function getMarketBreadth(): Promise<BreadthResult> {
         description = `Neutral breadth: ${breadth}% of NIFTY 100 above 50DMA (${aboveCount}/${totalEvaluated})`;
     }
 
-    console.log(`[Breadth] ${zone === 'WEAK' ? '🔴' : zone === 'STRONG' ? '🟢' : '🟡'} ${description} | Failed: ${failedCount}`);
+    logger.info(`[Breadth] ${zone === 'WEAK' ? '🔴' : zone === 'STRONG' ? '🟢' : '🟡'} ${description} | Failed: ${failedCount}`);
 
     const result: BreadthResult = {
         breadth,

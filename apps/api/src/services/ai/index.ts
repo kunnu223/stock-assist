@@ -7,6 +7,7 @@ import type { StockAnalysis } from '@stock-assist/shared';
 import { analyzeWithGroq } from './groq';
 import { analyzeWithGemini } from './gemini';
 import type { PromptInput } from './prompt';
+import { logger } from '../../config/logger';
 
 /** Analyze stock using AI (with fallback) */
 export const analyzeWithAI = async (input: PromptInput): Promise<StockAnalysis> => {
@@ -17,13 +18,13 @@ export const analyzeWithAI = async (input: PromptInput): Promise<StockAnalysis> 
     }
 
     // Fallback to Gemini
-    console.log(`[AI Service] Groq failed, trying Gemini for ${input.stock.symbol}`);
+    logger.info({ symbol: input.stock.symbol }, 'Groq failed, trying Gemini');
     const geminiResult = await analyzeWithGemini(input);
     if (geminiResult) {
         return geminiResult;
     }
 
-    console.log(`[AI Service] Using Fallback analysis for ${input.stock.symbol}`);
+    logger.info({ symbol: input.stock.symbol }, 'Using fallback analysis');
     // Fallback: generate basic analysis without AI
     return generateFallback(input);
 };

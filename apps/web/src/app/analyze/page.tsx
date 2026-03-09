@@ -1,18 +1,41 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Search, Activity, Terminal, Shield } from 'lucide-react';
 import { AnalysisDetail } from '@/components/analysis/AnalysisDetail';
-
 import { useLanguage } from '@/context/LanguageContext';
+
+interface AnalysisResponse {
+    success: boolean;
+    analysis: Record<string, unknown>;
+    error?: string;
+}
+
+async function runAnalysis({ symbol, language }: { symbol: string; language: string }): Promise<AnalysisResponse> {
+    const res = await fetch('/api/analyze/single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, language }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Analysis failed');
+    return data;
+}
 
 export default function AnalyzePage() {
     const [symbol, setSymbol] = useState('');
-    const [isScanning, setIsScanning] = useState(false);
-    const [analysis, setAnalysis] = useState<any | null>(null);
-    const [error, setError] = useState<string | null>(null); // Added error state
     const { t, language } = useLanguage();
-    const resultsRef = useRef<HTMLDivElement>(null); // Added ref for scrolling
+    const resultsRef = useRef<HTMLDivElement>(null);
+
+    const analysisMutation = useMutation({
+        mutationFn: runAnalysis,
+        onSuccess: () => {
+            setTimeout(() => {
+                resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        },
+    });
 
     // Auto-scan on mount if query params present
     useEffect(() => {
@@ -23,42 +46,19 @@ export default function AnalyzePage() {
         if (querySymbol) {
             setSymbol(querySymbol);
             if (auto === 'true') {
-                executeScan(querySymbol);
+                analysisMutation.mutate({ symbol: querySymbol, language });
             }
         }
-    }, [language]); // Re-run if language changes? Maybe not needed for auto-scan but good for safety
+    }, [language]);
 
-    const executeScan = async (searchSymbol: string) => { // Changed parameter name
-        if (!searchSymbol) return;
-        setIsScanning(true); // Renamed from setLoading
-        setAnalysis(null); // Renamed from setData
-        setError(null); // Reset error
-
-        try {
-            const res = await fetch('/api/analyze/single', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ symbol: searchSymbol, language }), // Used searchSymbol
-            });
-            const response = await res.json();
-            if (response.success) {
-                setAnalysis(response.analysis); // Renamed from setData
-                // Scroll to results after a short delay to allow render
-                setTimeout(() => {
-                    resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 100);
-            } else {
-                setError(response.error || 'Analysis failed'); // Set error on failure
-            }
-        } catch (err) {
-            console.error('Analysis failed:', err);
-            setError('Failed to connect to server'); // Set error on network issues
-        } finally {
-            setIsScanning(false); // Renamed from setLoading, moved to finally
-        }
+    const handleAnalyze = () => {
+        if (!symbol) return;
+        analysisMutation.mutate({ symbol, language });
     };
 
-    const handleAnalyze = () => executeScan(symbol);
+    const analysis = analysisMutation.data?.analysis || null;
+    const isScanning = analysisMutation.isPending;
+    const error = analysisMutation.error?.message || null;
 
     return (
         <div className="space-y-6 md:space-y-12 max-w-7xl mx-auto pb-24 pt-1 md:pt-10">

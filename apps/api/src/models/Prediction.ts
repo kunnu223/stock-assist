@@ -58,5 +58,7 @@ const PredictionSchema = new Schema<IPrediction>({
 
 // Index for getting pending predictions
 PredictionSchema.index({ status: 1, date: 1 });
+// TTL Index: Auto-delete predictions older than 90 days
+PredictionSchema.index({ date: 1 }, { expireAfterSeconds: 7776000 });
 
 export const Prediction = mongoose.model<IPrediction>('Prediction', PredictionSchema);

@@ -6,6 +6,7 @@
 import mongoose from 'mongoose';
 import { Prediction, PredictionStatus, type IPrediction } from '../../models';
 import { getStockData } from '../data';
+import { logger } from '../../config/logger';
 
 // Re-export calibration functions
 export {
@@ -26,7 +27,7 @@ const isConnected = () => mongoose.connection.readyState === 1;
 export const savePrediction = async (analysis: any): Promise<IPrediction | null> => {
     try {
         if (!isConnected()) {
-            // console.warn('Database not connected. Skipping prediction save.');
+            // logger.warn('Database not connected. Skipping prediction save.');
             return null;
         }
 
@@ -64,7 +65,7 @@ export const savePrediction = async (analysis: any): Promise<IPrediction | null>
 
         return await prediction.save();
     } catch (error) {
-        console.error('Error saving prediction:', error);
+        logger.error('Error saving prediction:', error);
         return null;
     }
 };
@@ -142,7 +143,7 @@ export const checkPredictions = async (): Promise<{ updated: number, total: numb
                 updatedCount++;
             }
         } catch (err) {
-            console.error(`Failed to check prediction for ${pred.symbol}:`, err);
+            logger.error(`Failed to check prediction for ${pred.symbol}:`, err);
         }
     }
 

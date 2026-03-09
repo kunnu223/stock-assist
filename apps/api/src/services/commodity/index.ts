@@ -18,6 +18,7 @@ import { analyzePriceVolume, calculateCommodityConfidence, type PriceVolumeSigna
 import { buildCommodityPrompt, buildUserFriendlyCommodityPrompt, type CommodityPromptInput } from './prompt';
 import { type Exchange, type ExchangePricing, buildExchangePricing, convertPlanPrices, getExchangeInfo, getSupportedExchanges } from './exchange';
 import { CommodityPrediction, CommodityPredictionStatus } from '../../models';
+import { logger } from '../../config/logger';
 
 export interface CommodityAnalysisResult {
     commodity: string;
@@ -158,7 +159,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
             const client = new Groq({ apiKey: groqKey });
             for (const model of models) {
                 try {
-                    console.log(`[Commodity AI] Trying Groq ${model}...`);
+                    logger.info(`[Commodity AI] Trying Groq ${model}...`);
                     const completion = await client.chat.completions.create({
                         model,
                         messages: [
@@ -172,7 +173,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
                     if (text) {
                         const parsed = parseAIResponse(text);
                         if (parsed) {
-                            console.log(`[Commodity AI] âœ… Groq ${model} success`);
+                            logger.info(`[Commodity AI] âœ… Groq ${model} success`);
                             return { result: parsed, model: `groq-${model}` };
                         }
                     }
@@ -180,11 +181,11 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
                     const msg = (err as Error).message;
                     if (msg.includes('429')) continue; // Rate limit, try next
                     if (msg.includes('401')) break;    // Bad key, stop
-                    console.warn(`[Commodity AI] Groq ${model} failed: ${msg}`);
+                    logger.warn(`[Commodity AI] Groq ${model} failed: ${msg}`);
                 }
             }
         } catch (err) {
-            console.warn(`[Commodity AI] Groq init failed:`, (err as Error).message);
+            logger.warn(`[Commodity AI] Groq init failed:`, (err as Error).message);
         }
     }
 
@@ -192,7 +193,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey && geminiKey !== 'demo-key') {
         try {
-            console.log(`[Commodity AI] Falling back to Gemini...`);
+            logger.info(`[Commodity AI] Falling back to Gemini...`);
             const genAI = new GoogleGenerativeAI(geminiKey);
             const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
             const result = await model.generateContent(promptText);
@@ -200,16 +201,16 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
             if (text) {
                 const parsed = parseAIResponse(text);
                 if (parsed) {
-                    console.log(`[Commodity AI] âœ… Gemini success`);
+                    logger.info(`[Commodity AI] âœ… Gemini success`);
                     return { result: parsed, model: 'gemini-2.0-flash' };
                 }
             }
         } catch (err) {
-            console.warn(`[Commodity AI] Gemini failed:`, (err as Error).message);
+            logger.warn(`[Commodity AI] Gemini failed:`, (err as Error).message);
         }
     }
 
-    console.warn(`[Commodity AI] âŒ All AI models failed â€” using system analysis only`);
+    logger.warn(`[Commodity AI] âŒ All AI models failed â€” using system analysis only`);
     return { result: null, model: 'none' };
 }
 
@@ -228,12 +229,12 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     }
 
     const exchangeInfo = getExchangeInfo(exchange, key);
-    console.log(`\n[Commodity] â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•`);
-    console.log(`[Commodity] ðŸª™ Analyzing ${COMMODITY_SYMBOLS[key].name} (${key}) on ${exchangeInfo.label} (${language || 'en'})`);
-    console.log(`[Commodity] â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n`);
+    logger.info(`\n[Commodity] â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•`);
+    logger.info(`[Commodity] ðŸª™ Analyzing ${COMMODITY_SYMBOLS[key].name} (${key}) on ${exchangeInfo.label} (${language || 'en'})`);
+    logger.info(`[Commodity] â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n`);
 
     // â”€â”€ Stage 1: Parallel Data Fetch â”€â”€
-    console.log(`[Commodity] ðŸ“Š Stage 1: Fetching data...`);
+    logger.info(`[Commodity] ðŸ“Š Stage 1: Fetching data...`);
     const [dataBundle, newsResult, accuracyStats] = await Promise.all([
         fetchCommodityData(key),
         fetchEnhancedNews(key).catch(() => ({
@@ -251,20 +252,20 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     ]);
 
     // â”€â”€ Stage 2: Technical Analysis â”€â”€
-    console.log(`[Commodity] ðŸ“ˆ Stage 2: Technical analysis (${dataBundle.commodity.history.length} daily bars)...`);
+    logger.info(`[Commodity] ðŸ“ˆ Stage 2: Technical analysis (${dataBundle.commodity.history.length} daily bars)...`);
     const indicators = calcIndicators(dataBundle.commodity.history);
     const weeklyIndicators = dataBundle.commodity.weeklyHistory.length >= 10
         ? calcIndicators(dataBundle.commodity.weeklyHistory)
         : undefined;
 
     // â”€â”€ Stage 3: Commodity-Specific Analysis â”€â”€
-    console.log(`[Commodity] ðŸ” Stage 3: Commodity-specific analysis...`);
+    logger.info(`[Commodity] ðŸ” Stage 3: Commodity-specific analysis...`);
     const seasonality = analyzeSeasonality(key);
     const macro = analyzeMacroContext(dataBundle.commodity, dataBundle.dxy, dataBundle.correlatedPrices);
     const priceVolume = analyzePriceVolume(dataBundle.commodity.history);
 
     // â”€â”€ Stage 4: Crash Detection â”€â”€
-    console.log(`[Commodity] ðŸš¨ Stage 4: Crash detection...`);
+    logger.info(`[Commodity] ðŸš¨ Stage 4: Crash detection...`);
     const allHistories = new Map<string, OHLCData[]>();
     allHistories.set(key, dataBundle.commodity.history);
     const highSeverityNewsCount = (newsResult.items || []).filter(
@@ -273,14 +274,14 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     const crash = detectMarketCrash(dataBundle.commodity, dataBundle.dxy, allHistories, highSeverityNewsCount);
 
     // â”€â”€ Stage 5: Confidence Scoring â”€â”€
-    console.log(`[Commodity] ðŸŽ¯ Stage 5: Confidence scoring...`);
+    logger.info(`[Commodity] ðŸŽ¯ Stage 5: Confidence scoring...`);
     const confidence = calculateCommodityConfidence(
         indicators, seasonality, macro, priceVolume, crash, weeklyIndicators
     );
-    console.log(`[Commodity] Confidence: ${confidence.score}% | Direction: ${confidence.direction} | Rec: ${confidence.recommendation}`);
+    logger.info(`[Commodity] Confidence: ${confidence.score}% | Direction: ${confidence.direction} | Rec: ${confidence.recommendation}`);
 
     // â”€â”€ Stage 6: Exchange Pricing (moved before AI so prompt gets correct currency) â”€â”€
-    console.log(`[Commodity] ðŸ’± Stage 6: Exchange pricing (${exchangeInfo.label})...`);
+    logger.info(`[Commodity] ðŸ’± Stage 6: Exchange pricing (${exchangeInfo.label})...`);
     const exchangePricing = await buildExchangePricing(
         key, exchange,
         {
@@ -298,7 +299,7 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     );
 
     // â”€â”€ Stage 7: AI Multi-Horizon Analysis â”€â”€
-    console.log(`[Commodity] ðŸ¤– Stage 7: AI multi-horizon analysis...`);
+    logger.info(`[Commodity] ðŸ¤– Stage 7: AI multi-horizon analysis...`);
     const newsHeadlines = (newsResult.latestHeadlines || []).slice(0, 5);
     const promptInput: CommodityPromptInput = {
         commodity: dataBundle.commodity,
@@ -367,7 +368,7 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
 
     // â”€â”€ Stage 8: Response Assembly â”€â”€
     const elapsed = Date.now() - startTime;
-    console.log(`[Commodity] âœ… Analysis complete in ${(elapsed / 1000).toFixed(1)}s (model: ${aiModel}, exchange: ${exchange})`);
+    logger.info(`[Commodity] âœ… Analysis complete in ${(elapsed / 1000).toFixed(1)}s (model: ${aiModel}, exchange: ${exchange})`);
 
     // Fix #1: Reconcile AI + system scores (not naive average)
     let finalConfidence: number;
@@ -485,7 +486,7 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     Promise.all([
         saveCommodityPrediction(analysisResult),
         updatePendingPredictions(key, dataBundle.commodity.history)
-    ]).catch(err => console.error('[Commodity] Backtest update error:', err));
+    ]).catch(err => logger.error('[Commodity] Backtest update error:', err));
 
     return analysisResult;
 }
@@ -624,7 +625,7 @@ async function updatePendingPredictions(symbol: string, history: OHLCData[]) {
             }
         }
     } catch (e) {
-        console.error(`[Backtest] Error updating ${symbol}:`, e);
+        logger.error(`[Backtest] Error updating ${symbol}:`, e);
     }
 }
 

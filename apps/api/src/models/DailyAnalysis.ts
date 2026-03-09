@@ -11,7 +11,7 @@ export interface IDailyAnalysis extends Document {
     confidenceScore: number;
     bullishProb: number;
     bearishProb: number;
-    analysis: any;
+    analysis: Record<string, unknown>;
     createdAt: Date;
     updatedAt: Date;
 }

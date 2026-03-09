@@ -10,6 +10,7 @@
 import type { OHLCData } from '@stock-assist/shared';
 import { calcATR } from '../indicators/volume';
 import type { SignalClarityResult, IndicatorSignal } from './signalClarity';
+import { logger } from '../../config/logger';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -113,7 +114,7 @@ export function runQualityGates(
     // Gate 1: Volatility
     const volGate = checkVolatility(data);
     if (!volGate.passed) {
-        console.log(`[QualityGates] ${symbol} rejected: ${volGate.reason}`);
+        logger.info(`[QualityGates] ${symbol} rejected: ${volGate.reason}`);
         gatesFailed.push('volatility');
         return {
             passed: false,
@@ -137,7 +138,7 @@ export function runQualityGates(
     // Gate 3: Liquidity
     const liqGate = checkLiquidity(data);
     if (!liqGate.passed) {
-        console.log(`[QualityGates] ${symbol} rejected: ${liqGate.reason}`);
+        logger.info(`[QualityGates] ${symbol} rejected: ${liqGate.reason}`);
         gatesFailed.push('liquidity');
         return {
             passed: false,
@@ -149,7 +150,7 @@ export function runQualityGates(
     }
     gatesPassed.push('liquidity');
 
-    console.log(`[QualityGates] ${symbol} passed all gates ✅ (adj: ${totalConfidenceAdj >= 0 ? '+' : ''}${totalConfidenceAdj})`);
+    logger.info(`[QualityGates] ${symbol} passed all gates ✅ (adj: ${totalConfidenceAdj >= 0 ? '+' : ''}${totalConfidenceAdj})`);
 
     return {
         passed: true,

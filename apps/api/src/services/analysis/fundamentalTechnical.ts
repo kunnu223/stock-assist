@@ -4,6 +4,7 @@
  */
 
 import type { FundamentalData } from '../data/fundamentals';
+import { logger } from '../../config/logger';
 
 export interface FundamentalTechnicalConflict {
     hasConflict: boolean;
@@ -83,7 +84,7 @@ export function detectFundamentalTechnicalConflict(
 
 
     const hasConflict = conflictType !== 'NONE';
-    console.log(`[fundamentalTechnical.ts:76] Conflict Check: ${conflictType} (Adjustment: ${confidenceAdjustment})`);
+    logger.info(`[fundamentalTechnical.ts:76] Conflict Check: ${conflictType} (Adjustment: ${confidenceAdjustment})`);
 
     // Generate recommendation
     let recommendation = '';

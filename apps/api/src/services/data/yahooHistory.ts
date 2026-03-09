@@ -49,6 +49,7 @@ const toNSE = (symbol: string): string => {
 
 
 import yahooFinance from '../../config/yahoo';
+import { logger } from '../../config/logger';
 
 /** Fetch historical OHLC data */
 export const fetchHistory = async (
@@ -92,7 +93,7 @@ export const fetchHistory = async (
             volume: q.volume || 0,
         })).filter((d: any) => d.date && d.close > 0);
     } catch (error) {
-        console.warn(`⚠️ Yahoo History Fetch Failed for ${symbol} (${interval}):`, (error as Error).message);
+        logger.warn(`⚠️ Yahoo History Fetch Failed for ${symbol} (${interval}):`, (error as Error).message);
         return [];
     }
 };

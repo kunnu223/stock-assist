@@ -6,6 +6,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { StockAnalysis } from '@stock-assist/shared';
 import { buildPrompt, type PromptInput } from './prompt';
+import { logger } from '../../config/logger';
 
 let genAI: GoogleGenerativeAI | null = null;
 
@@ -60,36 +61,36 @@ export const analyzeWithGemini = async (input: PromptInput): Promise<StockAnalys
             try {
                 attempts++;
                 const model = client.getGenerativeModel({ model: modelName });
-                console.log(`[Gemini] Attempting to generate with model: ${modelName} (Attempt ${attempts})`);
+                logger.debug({ model: modelName, attempt: attempts }, 'Gemini generation attempt');
 
                 const result = await model.generateContent(prompt);
                 const text = result.response.text();
 
-                console.log(`[Gemini] ✅ Success with ${modelName}`);
+                logger.info({ model: modelName }, 'Gemini analysis success');
                 return parseResponse(text);
             } catch (error) {
                 const msg = (error as Error).message;
 
                 // Handle Demo Mode gracefully
                 if (msg.includes('Demo Mode')) {
-                    console.log('[Gemini] Demo Mode active - Skipping AI generation');
+                    logger.info('Gemini Demo Mode active — skipping AI generation');
                     return null;
                 }
 
                 // Handle Rate Limit (429)
                 if (msg.includes('429') || msg.includes('Too Many Requests')) {
-                    console.warn(`[Gemini] ⏳ Rate limit hit on ${modelName}. Waiting 2s...`);
+                    logger.warn({ model: modelName }, 'Gemini rate limit hit, waiting 2s');
                     await delay(2000); // Backoff for 2 seconds
                     continue; // Retry same model
                 }
 
                 // For other errors (404, 500), log and break to try next model
-                console.warn(`[Gemini] ⚠️ Failed with ${modelName}: ${msg.split(']')[1] || msg}`);
+                logger.warn({ model: modelName, error: msg }, 'Gemini model failed');
                 break; // Break inner loop, go to next model
             }
         }
     }
 
-    console.error('[Gemini] ❌ All models failed (likely due to rate limits or invalid models).');
+    logger.error('Gemini: All models failed');
     return null;
 };

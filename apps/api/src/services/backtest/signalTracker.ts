@@ -9,6 +9,7 @@
 import { SignalRecord, SignalStatus, type ISignalRecord, type AdxRegime, type MarketRegime } from '../../models/SignalRecord';
 import type { OHLCData } from '@stock-assist/shared';
 import crypto from 'crypto';
+import { logger } from '../../config/logger';
 
 // ═══════════════════════════════════════════════════════════════
 // CONDITION HASHING (Phase A — #2)
@@ -186,14 +187,14 @@ export async function saveSignal(context: SignalContext): Promise<void> {
             // Update existing signal instead of creating duplicate
             Object.assign(existing, signalData);
             await existing.save();
-            console.log(`[SignalTracker] Updated signal for ${context.symbol} (hash: ${hash})`);
+            logger.info(`[SignalTracker] Updated signal for ${context.symbol} (hash: ${hash})`);
             return;
         }
 
         await SignalRecord.create(signalData);
-        console.log(`[SignalTracker] Saved signal for ${context.symbol} (hash: ${hash}, regime: ${context.regime}, align: ${alignmentBucket}, adx: ${adxBucket}, vol: ${volumeBucket})`);
+        logger.info(`[SignalTracker] Saved signal for ${context.symbol} (hash: ${hash}, regime: ${context.regime}, align: ${alignmentBucket}, adx: ${adxBucket}, vol: ${volumeBucket})`);
     } catch (error) {
-        console.error(`[SignalTracker] Failed to save signal for ${context.symbol}:`, error);
+        logger.error(`[SignalTracker] Failed to save signal for ${context.symbol}:`, error);
     }
 }
 
@@ -289,11 +290,11 @@ export async function updateSignalOutcomes(symbol: string, history: OHLCData[]):
         }
 
         if (updated > 0) {
-            console.log(`[SignalTracker] Updated ${updated}/${pending.length} pending signals for ${symbol}`);
+            logger.info(`[SignalTracker] Updated ${updated}/${pending.length} pending signals for ${symbol}`);
         }
         return updated;
     } catch (error) {
-        console.error(`[SignalTracker] Error updating outcomes for ${symbol}:`, error);
+        logger.error(`[SignalTracker] Error updating outcomes for ${symbol}:`, error);
         return 0;
     }
 }
@@ -352,7 +353,7 @@ export async function getConditionWinRates(filters?: ConditionFilter): Promise<W
             sampleSize: r.total,
         }));
     } catch (error) {
-        console.error('[SignalTracker] Error fetching condition win rates:', error);
+        logger.error('[SignalTracker] Error fetching condition win rates:', error);
         return [];
     }
 }
@@ -527,7 +528,7 @@ export async function getEmpiricalProbability(
                 : `Low reliability (${sampleSize}/${MIN_SAMPLES_FOR_EMPIRICAL} samples). Win rate ${winRate}%${reliabilityNote}. Expectancy[${expectancyMethod}]: ${expectancy.toFixed(3)}%`,
         };
     } catch (error) {
-        console.error(`[SignalTracker] Error fetching empirical probability for ${conditionLabel}:`, error);
+        logger.error(`[SignalTracker] Error fetching empirical probability for ${conditionLabel}:`, error);
         return {
             available: false,
             conditionHash: hash,
@@ -645,7 +646,7 @@ export async function getSignalStats(): Promise<{
             ready: resolved >= 300,
         };
     } catch (error) {
-        console.error('[SignalTracker] Error fetching stats:', error);
+        logger.error('[SignalTracker] Error fetching stats:', error);
         return {
             total: 0,
             resolved: 0,

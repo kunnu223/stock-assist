@@ -27,6 +27,7 @@
  */
 
 import { SignalRecord, SignalStatus } from '../../models/SignalRecord';
+import { logger } from '../../config/logger';
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -236,7 +237,7 @@ export async function getDerivedModifiers(): Promise<DerivedModifiersResult> {
         return result;
 
     } catch (error) {
-        console.error('[DerivedModifiers] Error computing modifiers:', error);
+        logger.error('[DerivedModifiers] Error computing modifiers:', error);
         return {
             ready: false,
             modifiers: [],

@@ -4,6 +4,7 @@
  */
 
 import mongoose from 'mongoose';
+import { logger } from './logger';
 
 let isConnected = false;
 
@@ -12,16 +13,21 @@ export const connectDB = async (): Promise<void> => {
 
     const uri = process.env.MONGODB_URI;
     if (!uri || uri.includes('<db_password>') || uri.includes('demo:demo')) {
-        console.warn('⚠️ MongoDB credentials not fully set. Data persistence disabled (Demo Mode).');
+        logger.warn('MongoDB credentials not fully set. Data persistence disabled (Demo Mode).');
         return;
     }
 
     try {
-        await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+        await mongoose.connect(uri, {
+            serverSelectionTimeoutMS: 5000,
+            maxPoolSize: 10,
+            minPoolSize: 2,
+            socketTimeoutMS: 45000,
+        });
         isConnected = true;
-        console.log('✅ MongoDB connected');
+        logger.info('MongoDB connected');
     } catch (error) {
-        console.error('❌ MongoDB connection failed:', error);
+        logger.error({ err: error }, 'MongoDB connection failed');
         // Don't throw the error, just let the app run in fallback mode
     }
 };

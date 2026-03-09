@@ -26,6 +26,7 @@
  */
 
 import { SignalRecord, SignalStatus } from '../../models/SignalRecord';
+import { logger } from '../../config/logger';
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -218,7 +219,7 @@ export async function getConfidenceCalibration(): Promise<ConfidenceCalibrationR
             recommendations,
         };
     } catch (error) {
-        console.error('[Calibration] Error building calibration table:', error);
+        logger.error('[Calibration] Error building calibration table:', error);
         return {
             ready: false,
             totalResolved: 0,
@@ -285,7 +286,7 @@ export async function calibrateConfidence(rawConfidence: number): Promise<Calibr
             wasCalibratable: true,
         };
     } catch (error) {
-        console.error('[Calibration] Error calibrating confidence:', error);
+        logger.error('[Calibration] Error calibrating confidence:', error);
         return {
             original: rawConfidence,
             calibrated: rawConfidence,

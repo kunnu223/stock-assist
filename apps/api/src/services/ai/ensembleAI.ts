@@ -14,6 +14,7 @@ import type { StockAnalysis } from '@stock-assist/shared';
 import { analyzeWithGroq } from './groq';
 import { analyzeWithGemini } from './gemini';
 import type { PromptInput } from './prompt';
+import { logger } from '../../config/logger';
 
 export interface EnsembleResult {
     analysis: StockAnalysis;
@@ -33,7 +34,7 @@ export async function analyzeWithEnsemble(
     input: PromptInput,
     systemConfidence: number
 ): Promise<EnsembleResult | null> {
-    console.log(`[EnsembleAI] 🧠 Starting qualitative ensemble analysis for ${input.stock.symbol}...`);
+    logger.info({ symbol: input.stock.symbol }, 'Starting qualitative ensemble analysis');
 
     // Run both models in parallel
     const [groqResult, geminiResult] = await Promise.allSettled([
@@ -45,10 +46,10 @@ export async function analyzeWithEnsemble(
     const geminiAnalysis = geminiResult.status === 'fulfilled' ? geminiResult.value : null;
 
     if (groqResult.status === 'rejected') {
-        console.warn(`[EnsembleAI] Groq rejected:`, groqResult.reason);
+        logger.warn({ err: groqResult.reason }, 'EnsembleAI: Groq rejected');
     }
     if (geminiResult.status === 'rejected') {
-        console.warn(`[EnsembleAI] Gemini rejected:`, geminiResult.reason);
+        logger.warn({ err: geminiResult.reason }, 'EnsembleAI: Gemini rejected');
     }
 
     // Case 1: Both models succeeded → merge qualitative output
@@ -63,13 +64,13 @@ export async function analyzeWithEnsemble(
             agreement = 'MODERATE';
         } else {
             agreement = 'LOW';
-            console.log(`[EnsembleAI] ⚠️ Direction disagreement: Groq=${groqBias}, Gemini=${geminiBias}`);
+            logger.info({ groq: groqBias, gemini: geminiBias }, 'EnsembleAI: Direction disagreement');
         }
 
         // Merge qualitative output (NO confidence override)
         const merged = mergeAnalyses(groqAnalysis, geminiAnalysis, systemConfidence);
 
-        console.log(`[EnsembleAI] ✅ Qualitative ensemble complete: Agreement=${agreement}, Models=both`);
+        logger.info({ agreement }, 'Qualitative ensemble complete (both models)');
 
         return {
             analysis: merged,
@@ -81,7 +82,7 @@ export async function analyzeWithEnsemble(
 
     // Case 2: Only Groq succeeded
     if (groqAnalysis) {
-        console.log(`[EnsembleAI] Using Groq only (Gemini failed)`);
+        logger.info('EnsembleAI: Using Groq only (Gemini failed)');
         return {
             analysis: groqAnalysis,
             role: 'qualitative-only',
@@ -92,7 +93,7 @@ export async function analyzeWithEnsemble(
 
     // Case 3: Only Gemini succeeded
     if (geminiAnalysis) {
-        console.log(`[EnsembleAI] Using Gemini only (Groq failed)`);
+        logger.info('EnsembleAI: Using Gemini only (Groq failed)');
         return {
             analysis: geminiAnalysis,
             role: 'qualitative-only',
@@ -102,7 +103,7 @@ export async function analyzeWithEnsemble(
     }
 
     // Case 4: Both failed
-    console.error(`[EnsembleAI] ❌ Both models failed for ${input.stock.symbol}`);
+    logger.error({ symbol: input.stock.symbol }, 'EnsembleAI: Both models failed');
     return null;
 }
 
@@ -129,7 +130,7 @@ function mergeAnalyses(
     const geminiBias = normalizeBias(gemini.bias);
 
     if (groqBias !== geminiBias && groqBias !== 'NEUTRAL' && geminiBias !== 'NEUTRAL') {
-        console.log(`[EnsembleAI] 🔄 Direction disagreement: Groq=${groqBias}, Gemini=${geminiBias} → Using system direction`);
+        logger.info({ groq: groqBias, gemini: geminiBias }, 'EnsembleAI: Direction disagreement, using system direction');
 
         // System decides direction — AI doesn't get a vote
         if (systemConfidence >= 60) {

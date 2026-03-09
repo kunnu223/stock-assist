@@ -4,6 +4,7 @@
  */
 
 import { fetchQuote } from '../data/yahooQuote';
+import { logger } from '../../config/logger';
 
 export interface SectorComparison {
     stockChange: number;
@@ -112,7 +113,7 @@ export async function compareSector(symbol: string, stockChangePercent: number):
                 const sectorQuote = await fetchQuote(sectorSymbol);
                 sectorChange = sectorQuote.changePercent;
             } catch (err) {
-                console.warn(`[SectorComparison] Failed to fetch ${sectorSymbol}:`, err);
+                logger.warn(`[SectorComparison] Failed to fetch ${sectorSymbol}:`, err);
             }
         }
 
@@ -121,11 +122,11 @@ export async function compareSector(symbol: string, stockChangePercent: number):
             const niftyQuote = await fetchQuote('NIFTY50');
             niftyChange = niftyQuote.changePercent;
         } catch (err) {
-            console.warn('[SectorComparison] Failed to fetch NIFTY50:', err);
+            logger.warn('[SectorComparison] Failed to fetch NIFTY50:', err);
         }
 
     } catch (error) {
-        console.error('[SectorComparison] Error:', error);
+        logger.error('[SectorComparison] Error:', error);
     }
 
     const outperformance = sectorChange !== null
@@ -140,7 +141,7 @@ export async function compareSector(symbol: string, stockChangePercent: number):
         niftyChange
     );
 
-    console.log(`[sectorComparison.ts:143] ${symbol} (${stockChangePercent.toFixed(2)}%) vs ${sectorSymbol || 'NIFTY'} (${sectorChange?.toFixed(2) ?? 'N/A'}%) -> ${verdict}`);
+    logger.info(`[sectorComparison.ts:143] ${symbol} (${stockChangePercent.toFixed(2)}%) vs ${sectorSymbol || 'NIFTY'} (${sectorChange?.toFixed(2) ?? 'N/A'}%) -> ${verdict}`);
 
     return {
         stockChange: stockChangePercent,

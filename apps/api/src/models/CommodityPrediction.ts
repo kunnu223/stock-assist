@@ -63,5 +63,7 @@ const CommodityPredictionSchema = new Schema<ICommodityPrediction>({
 CommodityPredictionSchema.index({ status: 1, exchange: 1 });
 // History lookups by symbol (most recent first)
 CommodityPredictionSchema.index({ symbol: 1, date: -1 });
+// TTL Index: Auto-delete predictions older than 90 days
+CommodityPredictionSchema.index({ date: 1 }, { expireAfterSeconds: 7776000 });
 
 export const CommodityPrediction = mongoose.model<ICommodityPrediction>('CommodityPrediction', CommodityPredictionSchema);

@@ -5,6 +5,7 @@
 
 import type { StockQuote } from '@stock-assist/shared';
 import yahooFinance from '../../config/yahoo';
+import { logger } from '../../config/logger';
 
 const BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -80,7 +81,7 @@ export const fetchQuote = async (symbol: string): Promise<StockQuote> => {
             changePercent: prevClose !== 0 ? Number(((change / prevClose) * 100).toFixed(2)) : 0,
         };
     } catch (error) {
-        console.warn(`⚠️ Yahoo Quote Fetch Failed for ${symbol}:`, (error as Error).message);
+        logger.warn(`⚠️ Yahoo Quote Fetch Failed for ${symbol}:`, (error as Error).message);
         // Fallback to mock data for resilience
         return {
             symbol: symbol.toUpperCase(),

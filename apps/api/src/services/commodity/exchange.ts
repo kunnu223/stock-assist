@@ -5,6 +5,7 @@
  */
 
 import { fetchHistory } from '../data/yahooHistory';
+import { logger } from '../../config/logger';
 
 // ── Exchange Types ──
 
@@ -126,16 +127,16 @@ export async function fetchUSDINR(): Promise<number> {
         if (history.length > 0) {
             const rate = history[history.length - 1].close;
             cachedUSDINR = { rate, timestamp: Date.now() };
-            console.log(`[Exchange] 💱 USD/INR rate: ₹${rate.toFixed(2)}`);
+            logger.info(`[Exchange] 💱 USD/INR rate: ₹${rate.toFixed(2)}`);
             return rate;
         }
     } catch (err) {
-        console.warn(`[Exchange] ⚠️ Failed to fetch USDINR:`, (err as Error).message);
+        logger.warn(`[Exchange] ⚠️ Failed to fetch USDINR:`, (err as Error).message);
     }
 
     // Fallback rate
     const fallback = cachedUSDINR?.rate || 86.5;
-    console.log(`[Exchange] Using fallback USD/INR: ₹${fallback}`);
+    logger.info(`[Exchange] Using fallback USD/INR: ₹${fallback}`);
     return fallback;
 }
 

@@ -7,6 +7,7 @@
 import type { OHLCData } from '@stock-assist/shared';
 import { fetchHistory } from '../data/yahooHistory';
 import { fetchQuote } from '../data/yahooQuote';
+import { logger } from '../../config/logger';
 
 /** Yahoo Finance symbols for commodity futures */
 export const COMMODITY_SYMBOLS: Record<string, { yahoo: string; name: string; category: string; correlatedWith: string[] }> = {
@@ -70,7 +71,7 @@ export async function fetchCommodityData(symbol: string): Promise<CommodityDataB
         throw new Error(`Unknown commodity: ${symbol}. Supported: ${Object.keys(COMMODITY_SYMBOLS).join(', ')}`);
     }
 
-    console.log(`[Commodity] 🪙 Fetching data for ${config.name} (${config.yahoo})...`);
+    logger.info(`[Commodity] 🪙 Fetching data for ${config.name} (${config.yahoo})...`);
 
     // Parallel fetch: commodity daily + weekly, DXY, correlated commodities
     const [dailyHistory, weeklyHistory, dxyHistory, ...correlatedQuotes] = await Promise.all([
@@ -119,7 +120,7 @@ export async function fetchCommodityData(symbol: string): Promise<CommodityDataB
         }
     }
 
-    console.log(`[Commodity] ✅ ${config.name}: $${currentPrice.toFixed(2)} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%), DXY: ${dxyValue.toFixed(2)}`);
+    logger.info(`[Commodity] ✅ ${config.name}: $${currentPrice.toFixed(2)} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%), DXY: ${dxyValue.toFixed(2)}`);
 
     return {
         commodity: {
