@@ -135,11 +135,4 @@ export function calculatePatternConfluence(timeframes: TimeframePatterns): Patte
     };
 }
 
-/**
- * Get human-readable confluence summary
- */
-export function getConfluenceSummary(confluence: PatternConfluence): string {
-    const { bullishCount, bearishCount, neutralCount, agreement } = confluence;
 
-    return `${agreement} pattern confluence: ${bullishCount} bullish, ${bearishCount} bearish, ${neutralCount} neutral timeframes`;
-}

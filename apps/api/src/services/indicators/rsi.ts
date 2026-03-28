@@ -38,7 +38,7 @@ export const calcRSI = (prices: number[], period: number = 14): RSIResult => {
 
     let interpretation: 'oversold' | 'neutral' | 'overbought' = 'neutral';
     if (value >= 70) interpretation = 'overbought';
-    else if (value <= 30) interpretation = 'oversold';
+    else if (value <= 40) interpretation = 'oversold';
 
     return { value, interpretation };
 };

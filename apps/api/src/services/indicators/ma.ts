@@ -49,12 +49,21 @@ export const calcMA = (prices: number[]): MAResult => {
     const sma50 = calcSMA(prices, 50);
     const sma200 = calcSMA(prices, 200);
 
-    const above20 = current > sma20;
-    const above50 = current > sma50;
+    // Percentage distance from MAs (0.5% buffer to avoid false signals at exact crossing)
+    const pctAbove20 = sma20 > 0 ? ((current - sma20) / sma20) * 100 : 0;
+    const pctAbove50 = sma50 > 0 ? ((current - sma50) / sma50) * 100 : 0;
+
+    const above20 = pctAbove20 > 0.5;
+    const above50 = pctAbove50 > 0.5;
+    const below20 = pctAbove20 < -0.5;
+    const below50 = pctAbove50 < -0.5;
+
     let trend: 'bullish' | 'bearish' | 'neutral' = 'neutral';
 
     if (above20 && above50 && sma20 > sma50) trend = 'bullish';
-    else if (!above20 && !above50 && sma20 < sma50) trend = 'bearish';
+    else if (below20 && below50 && sma20 < sma50) trend = 'bearish';
+    else if (below20 && !above50 && sma20 > sma50) trend = 'bearish';
+    else if (!below20 && above50 && sma20 < sma50) trend = 'bullish';
 
     return {
         sma20,

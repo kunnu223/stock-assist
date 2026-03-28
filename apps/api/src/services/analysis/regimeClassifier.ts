@@ -51,10 +51,11 @@ export interface RegimeWeights {
 // ═══════════════════════════════════════════════════════════════
 
 // Per-regime weight distributions (must sum to 1.0)
+// v5: Increased technical weight in trending regimes for more decisive signals
 const DEFAULT_REGIME_WEIGHTS: Record<MarketRegime, RegimeWeights> = {
-    TRENDING_STRONG: { technical: 0.45, pattern: 0.15, volume: 0.15, news: 0.10, fundamental: 0.15 },
-    TRENDING_WEAK: { technical: 0.35, pattern: 0.20, volume: 0.15, news: 0.15, fundamental: 0.15 },
-    RANGE: { technical: 0.25, pattern: 0.10, volume: 0.20, news: 0.20, fundamental: 0.25 },
+    TRENDING_STRONG: { technical: 0.50, pattern: 0.18, volume: 0.15, news: 0.07, fundamental: 0.10 },
+    TRENDING_WEAK: { technical: 0.40, pattern: 0.20, volume: 0.15, news: 0.10, fundamental: 0.15 },
+    RANGE: { technical: 0.25, pattern: 0.15, volume: 0.20, news: 0.15, fundamental: 0.25 },
     VOLATILE: { technical: 0.30, pattern: 0.10, volume: 0.25, news: 0.20, fundamental: 0.15 },
     EVENT_DRIVEN: { technical: 0.15, pattern: 0.05, volume: 0.15, news: 0.45, fundamental: 0.20 },
 };

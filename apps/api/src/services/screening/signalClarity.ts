@@ -15,6 +15,7 @@ import { calcMACD } from '../indicators/volume';
 import { calcBollingerBands } from '../indicators/bollinger';
 import { analyzeVolume } from '../indicators/volume';
 import { detectTrend } from '../patterns/trend';
+import { calcADX } from '../indicators/adx';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -49,12 +50,13 @@ export interface SignalClarityResult {
 // ─── Indicator Weights ──────────────────────────────────
 
 const WEIGHTS = {
-    rsi: 0.20,        // 20%
-    macd: 0.20,       // 20%
-    maTrend: 0.20,    // 20%
-    bollinger: 0.15,  // 15%
+    rsi: 0.15,        // 15%
+    macd: 0.18,       // 18%
+    maTrend: 0.18,    // 18%
+    bollinger: 0.12,  // 12%
     volume: 0.10,     // 10%
-    trend: 0.15,      // 15%
+    trend: 0.12,      // 12%
+    adx: 0.15,        // 15% — NEW: trend strength indicator
 };
 
 // ─── Individual Signal Analyzers ────────────────────────
@@ -244,6 +246,48 @@ const analyzeTrendSignal = (data: OHLCData[]): IndicatorSignal => {
     };
 };
 
+/**
+ * ADX Signal: trend strength — picks stocks that are actually trending
+ * ADX > 25 = strong trend (bullish signal for screening)
+ * ADX 18-25 = developing trend (moderate)
+ * ADX < 18 = no trend / choppy (bearish signal — avoid)
+ */
+const analyzeADX = (data: OHLCData[]): IndicatorSignal => {
+    if (data.length < 20) {
+        return { name: 'ADX', direction: 'neutral', strength: 20, detail: 'Insufficient data for ADX' };
+    }
+
+    const adxResult = calcADX(data);
+    const adx = adxResult.adx;
+
+    let direction: IndicatorSignal['direction'] = 'neutral';
+    let strength = 0;
+
+    if (adx >= 30) {
+        // Strong trend — this stock is moving with conviction
+        direction = adxResult.trendDirection === 'bearish' ? 'bearish' : 'bullish';
+        strength = Math.min(100, 70 + (adx - 30) * 2);
+    } else if (adx >= 25) {
+        direction = adxResult.trendDirection === 'bearish' ? 'bearish' : 'bullish';
+        strength = 60 + (adx - 25) * 2;
+    } else if (adx >= 20) {
+        // Developing trend
+        direction = adxResult.trendDirection === 'bearish' ? 'bearish' : 'bullish';
+        strength = 40;
+    } else {
+        // No trend — choppy, avoid
+        direction = 'neutral';
+        strength = 15;
+    }
+
+    return {
+        name: 'ADX',
+        direction,
+        strength: Math.round(strength),
+        detail: `ADX ${adx.toFixed(1)} — ${adxResult.trendStrength} (${adxResult.trendDirection})`,
+    };
+};
+
 // ─── Main Scoring Function ──────────────────────────────
 
 /**
@@ -265,6 +309,7 @@ const calculateClarityForSlice = (
         analyzeBollinger(prices),
         analyzeVolumeSignal(data),
         analyzeTrendSignal(data),
+        analyzeADX(data),
     ];
 
     const bullishVotes = signals.filter(s => s.direction === 'bullish').length;
@@ -275,7 +320,7 @@ const calculateClarityForSlice = (
     const majorityVotes = Math.max(bullishVotes, bearishVotes);
     const rawClarity = (majorityVotes / signals.length) * 100;
 
-    const weights = [WEIGHTS.rsi, WEIGHTS.macd, WEIGHTS.maTrend, WEIGHTS.bollinger, WEIGHTS.volume, WEIGHTS.trend];
+    const weights = [WEIGHTS.rsi, WEIGHTS.macd, WEIGHTS.maTrend, WEIGHTS.bollinger, WEIGHTS.volume, WEIGHTS.trend, WEIGHTS.adx];
     let weightedScore = 0;
 
     for (let i = 0; i < signals.length; i++) {
@@ -385,6 +430,6 @@ export const calculateSignalClarity = (
 
 /**
  * Minimum clarity threshold to be included in top 10
- * At least 4 out of 6 indicators must agree (67%)
+ * At least 5 out of 7 indicators must agree (~71%)
  */
-export const MIN_CLARITY_THRESHOLD = 67;
+export const MIN_CLARITY_THRESHOLD = 71;

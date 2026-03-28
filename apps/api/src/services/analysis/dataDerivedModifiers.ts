@@ -259,7 +259,8 @@ export async function getDerivedModifiers(): Promise<DerivedModifiersResult> {
 export async function getModifiersForConditions(
     volumeRatio: number,
     alignmentScore: number,
-    adxValue: number
+    adxValue: number,
+    direction?: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
 ): Promise<AppliedModifiers> {
     const derived = await getDerivedModifiers();
 
@@ -277,7 +278,11 @@ export async function getModifiersForConditions(
     } else if (volumeRatio >= 1.2) {
         volumeModifier = getVal('Volume Confirmed', STATIC_MODIFIERS.volumeConfirmed);
     } else if (volumeRatio < 0.8) {
-        volumeModifier = STATIC_MODIFIERS.volumeLow; // Negative — no positive data-derivation
+        if (direction && direction !== 'NEUTRAL' && alignmentScore >= 60) {
+            volumeModifier = Math.round(STATIC_MODIFIERS.volumeLow / 2);
+        } else {
+            volumeModifier = STATIC_MODIFIERS.volumeLow;
+        }
     }
 
     // Multi-TF alignment modifier

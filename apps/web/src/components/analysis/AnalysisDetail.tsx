@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Activity, BarChart2, Globe, Zap, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, MoreHorizontal, Star, Copy, Check } from 'lucide-react';
+import { Activity, BarChart2, Globe, Zap, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, MoreHorizontal, Star, Copy, Check, Shield, Target, Crosshair } from 'lucide-react';
 import { useWatchlist } from '@/context/WatchlistContext';
 
 // Shared types (simplified for component usage)
@@ -36,6 +36,21 @@ export interface AnalysisData {
         peRatio: number | null;
     };
     candlestickPatterns: string[];
+    candlestickAnalysis?: {
+        patterns: Array<{
+            name: string;
+            type: 'bullish' | 'bearish' | 'neutral';
+            strength: 'weak' | 'moderate' | 'strong';
+            confidenceWeight: number;
+            description: string;
+            candles: number;
+        }>;
+        bullishCount: number;
+        bearishCount: number;
+        dominantBias: 'bullish' | 'bearish' | 'neutral';
+        compositeScore: number;
+        summary: string;
+    };
     confidenceBreakdown: {
         patternStrength: number;
         newsSentiment: number;
@@ -50,6 +65,37 @@ export interface AnalysisData {
     bias: string;
     confidence: string;
     rawPrompt?: string;
+    signalCard?: {
+        ticker: string;
+        direction: 'bullish' | 'bearish' | 'none';
+        status: 'SETUP_ACTIVE' | 'WAITING_FOR_ENTRY' | 'NO_SETUP';
+        convictionScore: number;
+        entryZone: {
+            entryZoneLow: number;
+            entryZoneHigh: number;
+            stopLoss: number;
+            target1: number;
+            target2: number;
+            riskReward: number;
+            isValid: boolean;
+            entryTrigger: string;
+        } | null;
+        explanation: string[];
+        mtfAlignment: {
+            weeklyTrend: string;
+            dailySetup: string;
+            alignmentScore: number;
+            alignmentValid: boolean;
+        };
+        smcSummary: {
+            trendState: string;
+            orderBlockCount: number;
+            unmitigatedOBCount: number;
+            unfilledFVGCount: number;
+            chochDetected: boolean;
+            sweepDetected: boolean;
+        };
+    };
 }
 
 interface AnalysisDetailProps {
@@ -79,6 +125,9 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
 
     return (
         <div className="space-y-6 max-w-6xl mx-auto">
+            {/* Phase 1: Pre-Move Signal Card */}
+            {data.signalCard && <SignalCardDisplay card={data.signalCard} />}
+
             {/* Executive Summary */}
             <div className="border border-border bg-zinc-950/50 p-5 md:p-8 rounded-xl relative overflow-hidden">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-8 relative z-10">
@@ -138,12 +187,55 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
                         <DataRow label="MACD" value={data.indicators.MACD} statusIndicator />
                         <DataRow label="Bollinger" value={data.indicators.bollingerPosition.replace('_', ' ')} />
                         <div className="pt-2">
-                            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest mb-2">Candlestick Formations</p>
-                            <div className="flex flex-wrap gap-2">
-                                {data.candlestickPatterns.length > 0 ? data.candlestickPatterns.map((p, i) => (
-                                    <span key={i} className="px-2 py-0.5 bg-zinc-800 text-zinc-100 text-[10px] font-bold rounded border border-zinc-700 uppercase">{p}</span>
-                                )) : <span className="text-[10px] text-muted-foreground">Neutral Price Action</span>}
-                            </div>
+                            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest mb-2">🕯️ Candlestick Patterns</p>
+                            {data.candlestickAnalysis && data.candlestickAnalysis.patterns.length > 0 ? (
+                                <>
+                                    <div className="flex flex-wrap gap-2 mb-3">
+                                        {data.candlestickAnalysis.patterns.map((p, i) => (
+                                            <span
+                                                key={i}
+                                                title={p.description}
+                                                className={`px-2 py-1 text-[10px] font-bold rounded border uppercase cursor-help transition-colors ${p.type === 'bullish'
+                                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                    : p.type === 'bearish'
+                                                        ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                                        : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                                                    }`}
+                                            >
+                                                {p.name} · {p.strength}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    {/* Composite score bar */}
+                                    {(data.candlestickAnalysis.bullishCount > 0 || data.candlestickAnalysis.bearishCount > 0) && (
+                                        <div className="mb-2">
+                                            <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800">
+                                                {data.candlestickAnalysis.bullishCount > 0 && (
+                                                    <div
+                                                        className="bg-emerald-500 transition-all"
+                                                        style={{ width: `${(data.candlestickAnalysis.bullishCount / (data.candlestickAnalysis.bullishCount + data.candlestickAnalysis.bearishCount)) * 100}%` }}
+                                                    />
+                                                )}
+                                                {data.candlestickAnalysis.bearishCount > 0 && (
+                                                    <div
+                                                        className="bg-rose-500 transition-all"
+                                                        style={{ width: `${(data.candlestickAnalysis.bearishCount / (data.candlestickAnalysis.bullishCount + data.candlestickAnalysis.bearishCount)) * 100}%` }}
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <p className="text-[9px] text-muted-foreground">{data.candlestickAnalysis.summary}</p>
+                                </>
+                            ) : data.candlestickPatterns.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {data.candlestickPatterns.map((p, i) => (
+                                        <span key={i} className="px-2 py-0.5 bg-zinc-800 text-zinc-100 text-[10px] font-bold rounded border border-zinc-700 uppercase">{p}</span>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className="text-[10px] text-muted-foreground">No significant candlestick patterns detected</span>
+                            )}
                         </div>
                     </div>
                 </Section>
@@ -249,6 +341,201 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Phase 1: Pre-Move Signal Card Component
+// ═══════════════════════════════════════════════════════════════
+
+function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCard']> }) {
+    const isActive = card.status === 'SETUP_ACTIVE';
+    const isWaiting = card.status === 'WAITING_FOR_ENTRY';
+    const isNoSetup = card.status === 'NO_SETUP';
+    const isBullish = card.direction === 'bullish';
+
+    const statusConfig = {
+        SETUP_ACTIVE: {
+            label: '✅ SETUP ACTIVE',
+            className: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400',
+            pulse: true,
+        },
+        WAITING_FOR_ENTRY: {
+            label: '⏳ WAITING FOR ENTRY',
+            className: 'bg-amber-500/15 border-amber-500/30 text-amber-400',
+            pulse: false,
+        },
+        NO_SETUP: {
+            label: '❌ NO SETUP',
+            className: 'bg-zinc-800/50 border-zinc-700/30 text-zinc-500',
+            pulse: false,
+        },
+    };
+
+    const status = statusConfig[card.status];
+
+    const convictionColor = card.convictionScore >= 70
+        ? 'bg-emerald-500'
+        : card.convictionScore >= 55
+            ? 'bg-amber-500'
+            : 'bg-zinc-600';
+
+    // Static class maps — Tailwind JIT can't detect dynamic `border-${var}-500` patterns
+    const cardBorderClass = isActive
+        ? (isBullish
+            ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.03] to-zinc-950'
+            : 'border-rose-500/30 bg-gradient-to-br from-rose-500/[0.03] to-zinc-950')
+        : isWaiting
+            ? 'border-amber-500/20 bg-zinc-950/60'
+            : 'border-zinc-800/60 bg-zinc-950/30';
+
+    const headerBorderClass = isNoSetup
+        ? 'border-zinc-800/50 bg-zinc-900/20'
+        : isBullish
+            ? 'border-emerald-500/10 bg-emerald-500/[0.02]'
+            : 'border-rose-500/10 bg-rose-500/[0.02]';
+
+    return (
+        <div id="signal-card" className={`border-2 rounded-xl overflow-hidden transition-all ${cardBorderClass}`}>
+            {/* Header */}
+            <div className={`px-5 py-4 flex items-center justify-between border-b ${headerBorderClass}`}>
+                <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isNoSetup
+                            ? 'bg-zinc-800/60 text-zinc-500'
+                            : isBullish
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-rose-500/15 text-rose-400'
+                        }`}>
+                        {isNoSetup ? <Shield size={18} /> : isBullish ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-xs font-black text-foreground uppercase tracking-widest">Pre-Move Signal</h3>
+                            <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${status.className} ${status.pulse ? 'animate-pulse' : ''
+                                }`}>
+                                {status.label}
+                            </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                            Smart Money Concepts · {card.smcSummary.trendState.charAt(0).toUpperCase() + card.smcSummary.trendState.slice(1)}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Direction Badge */}
+                {card.direction !== 'none' && (
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${isBullish
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                            : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                        }`}>
+                        {card.direction}
+                    </span>
+                )}
+            </div>
+
+            {/* Body */}
+            <div className="p-5">
+                {/* Conviction Score Bar */}
+                <div className="mb-5">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-[9px] text-muted-foreground uppercase font-black tracking-widest">Conviction Score</span>
+                        <span className={`text-lg font-black ${card.convictionScore >= 70 ? 'text-emerald-400'
+                                : card.convictionScore >= 55 ? 'text-amber-400'
+                                    : 'text-zinc-500'
+                            }`}>
+                            {card.convictionScore}<span className="text-xs text-muted-foreground font-normal">/100</span>
+                        </span>
+                    </div>
+                    <div className="h-2 bg-zinc-800/60 rounded-full overflow-hidden">
+                        <div
+                            className={`h-full rounded-full transition-all duration-700 ease-out ${convictionColor}`}
+                            style={{ width: `${card.convictionScore}%` }}
+                        />
+                    </div>
+                </div>
+
+                {/* Trade Levels Grid — only show for active/waiting setups */}
+                {card.entryZone && !isNoSetup && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+                        <div className="p-3 bg-zinc-900/60 border border-zinc-800/50 rounded-lg">
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <Crosshair size={11} className="text-primary-500" />
+                                <p className="text-[8px] text-muted-foreground uppercase font-black tracking-widest">Entry Zone</p>
+                            </div>
+                            <p className="text-sm font-bold text-foreground">
+                                ₹{card.entryZone.entryZoneLow.toLocaleString()} – ₹{card.entryZone.entryZoneHigh.toLocaleString()}
+                            </p>
+                            <p className="text-[9px] text-muted-foreground mt-0.5">via {card.entryZone.entryTrigger}</p>
+                        </div>
+
+                        <div className="p-3 bg-rose-500/[0.04] border border-rose-500/10 rounded-lg">
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <AlertCircle size={11} className="text-rose-500" />
+                                <p className="text-[8px] text-rose-400/80 uppercase font-black tracking-widest">Stop Loss</p>
+                            </div>
+                            <p className="text-sm font-bold text-rose-400">₹{card.entryZone.stopLoss.toLocaleString()}</p>
+                        </div>
+
+                        <div className="p-3 bg-emerald-500/[0.04] border border-emerald-500/10 rounded-lg">
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <Target size={11} className="text-emerald-500" />
+                                <p className="text-[8px] text-emerald-400/80 uppercase font-black tracking-widest">Target 1</p>
+                            </div>
+                            <p className="text-sm font-bold text-emerald-400">₹{card.entryZone.target1.toLocaleString()}</p>
+                        </div>
+
+                        <div className="p-3 bg-emerald-500/[0.03] border border-emerald-500/10 rounded-lg">
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <Target size={11} className="text-emerald-400" />
+                                <p className="text-[8px] text-emerald-400/60 uppercase font-black tracking-widest">Target 2</p>
+                            </div>
+                            <p className="text-sm font-bold text-emerald-300">₹{card.entryZone.target2.toLocaleString()}</p>
+                        </div>
+
+                        <div className="p-3 bg-zinc-900/60 border border-zinc-800/50 rounded-lg">
+                            <p className="text-[8px] text-muted-foreground uppercase font-black tracking-widest mb-1">Risk : Reward</p>
+                            <p className={`text-sm font-bold ${card.entryZone.riskReward >= 2 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                1 : {card.entryZone.riskReward}
+                            </p>
+                        </div>
+
+                        <div className="p-3 bg-zinc-900/60 border border-zinc-800/50 rounded-lg">
+                            <p className="text-[8px] text-muted-foreground uppercase font-black tracking-widest mb-1">MTF Score</p>
+                            <p className={`text-sm font-bold ${card.mtfAlignment.alignmentValid ? 'text-foreground' : 'text-zinc-500'}`}>
+                                {card.mtfAlignment.alignmentScore}%
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Why This Setup — explanation bullets */}
+                {card.explanation.length > 0 && (
+                    <div className={`p-4 rounded-lg border ${isNoSetup ? 'bg-zinc-900/20 border-zinc-800/30' : 'bg-zinc-900/40 border-zinc-800/40'
+                        }`}>
+                        <p className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mb-3">
+                            {isNoSetup ? 'Why No Setup' : 'Why This Setup'}
+                        </p>
+                        <div className="space-y-1.5">
+                            {card.explanation.map((line, i) => (
+                                <p key={i} className={`text-[11px] leading-relaxed ${isNoSetup ? 'text-zinc-500' : 'text-zinc-300'
+                                    }`}>
+                                    {line}
+                                </p>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* NO_SETUP footer message */}
+                {isNoSetup && (
+                    <div className="mt-3 text-center">
+                        <p className="text-[10px] text-zinc-600 italic">
+                            Market conditions don&apos;t meet the 1:2 R:R or 55 conviction threshold — patience is discipline
+                        </p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

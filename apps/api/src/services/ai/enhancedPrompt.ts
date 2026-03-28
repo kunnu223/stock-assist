@@ -1,16 +1,10 @@
-/**
- * Enhanced AI Prompt Builder
- * @module @stock-assist/api/services/ai/enhancedPrompt
- */
-
 import type { StockData, TechnicalIndicators, PatternAnalysis } from '@stock-assist/shared';
 import { TRADING } from '@stock-assist/shared';
 import type { FundamentalData } from '../data/fundamentals';
 import type { EnhancedNewsAnalysis } from '../news/enhanced';
-import type { ConfidenceResult } from '../analysis/confidenceScoring';
+import type { SplitConfidenceResult } from '../analysis/confidenceScoring';
 
-// Re-export types for convenience
-export type { EnhancedNewsAnalysis, FundamentalData, ConfidenceResult };
+export type { EnhancedNewsAnalysis, FundamentalData, SplitConfidenceResult };
 
 import type { MultiTimeframeAnalysis } from '../analysis/technicalAnalysis';
 
@@ -21,7 +15,7 @@ export interface EnhancedPromptInput {
    news: EnhancedNewsAnalysis;
    fundamentals: FundamentalData;
    technicalSummary: string;
-   confidenceResult: ConfidenceResult;
+   confidenceResult: SplitConfidenceResult;
    weeklyIndicators?: TechnicalIndicators;
    monthlyIndicators?: TechnicalIndicators;
    weeklyPatterns?: PatternAnalysis;
@@ -33,225 +27,194 @@ export interface EnhancedPromptInput {
    language?: string;
 }
 
-/**
- * Build comprehensive enhanced analysis prompt
- */
-export const buildEnhancedPrompt = (input: EnhancedPromptInput): string => {
-   const { stock, indicators, patterns, news, fundamentals, confidenceResult, weeklyIndicators, monthlyIndicators, patternConfluence, ftConflict, sectorComparison, multiTimeframe, language } = input;
-   const { quote } = stock;
-   const { rsi, ma, macd } = indicators;
-
-   // Use multiTimeframe data if available, otherwise fallback to basic
-   const dailyBias = multiTimeframe?.timeframes['1D'].trend || 'neutral';
-   const weeklyBias = multiTimeframe?.timeframes['1W'].trend || 'neutral';
-   const monthlyBias = multiTimeframe?.timeframes['1M'].trend || 'neutral';
-
-   const langInstruction = language === 'hi'
-      ? 'IMPORTANT: Provide the response in HINDI language (Devanagari script) for all text fields (summary, reasoning, action, etc). Keep JSON keys in English.'
-      : '';
-
-   const prompt = `You are an expert stock analyst. Analyze ${quote.symbol}:
-
-${langInstruction}
-
-📊 CURRENT PRICE: ₹${quote.price}
-
-═══════════════════════════════════════
-MULTI-TIMEFRAME TECHNICAL ANALYSIS
-═══════════════════════════════════════
-
-📈 DAILY (1D) - Short-term view:
-├─ RSI: ${rsi.value.toFixed(1)} (${rsi.interpretation})
-├─ MACD: ${macd.trend}
-├─ Moving Average: ${ma.trend} (SMA20: ${ma.sma20.toFixed(2)}, SMA50: ${ma.sma50.toFixed(2)})
-├─ Patterns: ${patterns.primary ? patterns.primary.name : 'None'}
-└─ Overall Bias: ${dailyBias.toUpperCase()}
-
-📊 WEEKLY (1W) - Medium-term view:
-${weeklyIndicators ? `├─ RSI: ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation})
-├─ MACD: ${weeklyIndicators.macd.trend}
-├─ Moving Average: ${weeklyIndicators.ma.trend}
-├─ Patterns: ${input.weeklyPatterns?.primary ? input.weeklyPatterns.primary.name : 'None'}
-└─ Overall Bias: ${weeklyBias.toUpperCase()}` : '└─ Data unavailable'}
-
-📉 MONTHLY (1M) - Long-term view:
-${monthlyIndicators ? `├─ RSI: ${monthlyIndicators.rsi.value.toFixed(1)} (${monthlyIndicators.rsi.interpretation})
-├─ MACD: ${monthlyIndicators.macd.trend}
-├─ Moving Average: ${monthlyIndicators.ma.trend}
-├─ Patterns: ${input.monthlyPatterns?.primary ? input.monthlyPatterns.primary.name : 'None'}
-└─ Overall Bias: ${monthlyBias.toUpperCase()}` : '└─ Data unavailable'}
-
-⚖️ TIMEFRAME CONFLUENCE:
-${patternConfluence ? `├─ Bullish timeframes: ${patternConfluence.bullishTimeframes.join(', ') || 'None'}
-├─ Bearish timeframes: ${patternConfluence.bearishTimeframes.join(', ') || 'None'}
-├─ Neutral timeframes: ${patternConfluence.neutralTimeframes.join(', ') || 'None'}
-├─ Agreement Score: ${patternConfluence.score}/100 (${patternConfluence.agreement})
-└─ Recommendation: ${patternConfluence.recommendation}` : '└─ Data unavailable'}
-
-${news.breakingNews && news.breakingNews.length > 0 ? `
-🚨 BREAKING NEWS (< 2 hours old):
-${news.breakingNews.map((n: any) => `├─ [${n.sentiment.toUpperCase()}] ${n.title}`).join('\n')}
-└─ Impact: ${news.breakingImpact}` : ''}
-
-💰 FUNDAMENTAL vs TECHNICAL:
-${ftConflict ? (ftConflict.hasConflict ? `
-⚠️ CONFLICT DETECTED: ${ftConflict.conflictType}
-├─ Technical Bias: ${ftConflict.technicalBias}
-├─ Fundamental Verdict: ${ftConflict.fundamentalVerdict}
-└─ Adjustment: ${ftConflict.confidenceAdjustment}%` : '✅ No conflict - fundamentals support technical setup') : '└─ Data unavailable'}
-
-📊 SECTOR COMPARISON:
-${sectorComparison ? `├─ Stock Change: ${sectorComparison.stockChange.toFixed(2)}%
-├─ Sector Change: ${sectorComparison.sectorChange ? sectorComparison.sectorChange.toFixed(2) + '%' : 'N/A'}
-├─ Outperformance: ${sectorComparison.outperformance ? sectorComparison.outperformance.toFixed(2) + '%' : 'N/A'}
-└─ Verdict: ${sectorComparison.verdict}` : '└─ Data unavailable'}
-
-═══════════════════════════════════════
-YOUR ANALYSIS TASK
-═══════════════════════════════════════
-
-1️⃣ TIMEFRAME ANALYSIS:
-   - Which timeframe shows the strongest setup?
-   - Do 2+ timeframes confirm the same direction?
-   - Is there a conflict between short-term and long-term trends?
-
-2️⃣ CONFLUENCE CHECK:
-   - How many indicators align on each timeframe?
-   - Is there a "golden cross" or "death cross" on any timeframe?
-   - Do RSI levels support the price action?
-
-3️⃣ NEWS & FUNDAMENTALS:
-   - Does breaking news invalidate the technical setup?
-   - Should the fundamental conflict reduce our confidence?
-
-4️⃣ RISK ASSESSMENT:
-   - What are the key risks to this trade?
-   - What could invalidate the setup?
-
-═══════════════════════════════════════
-DECISION RULES (MUST FOLLOW)
-═══════════════════════════════════════
-
-✅ HIGH PROBABILITY (70-85%):
-   - 3+ timeframes align in same direction
-   - Strong pattern confluence score (>75)
-   - No breaking negative news
-   - No fundamental conflicts OR conflict is minor
-
-⚠️ MEDIUM PROBABILITY (50-70%):
-   - 2 timeframes align
-   - Moderate confluence (50-75)
-   - Minor news or fundamental issues
-
-❌ LOW PROBABILITY (<50%):
-   - Only 1 timeframe bullish/bearish
-   - Conflicting signals across timeframes
-   - Major fundamental conflicts
-   - Breaking negative news overrides technicals
-
-🚫 NO TRADE (WAIT):
-   - Strong conflict (1D bullish but 1M bearish)
-   - Breaking negative news on bullish setup
-   - Confluence score < 40
-
-Provide your analysis in the required JSON format with REALISTIC probabilities.`;
-
-   return prompt;
-};
-
-/**
- * Build a user-friendly prompt for copying to other AI tools (ChatGPT, Claude, etc.)
- * Same data as the enhanced prompt but asks for clear, actionable, human-readable output
- */
 export const buildUserFriendlyPrompt = (input: EnhancedPromptInput): string => {
    const { stock, indicators, patterns, news, fundamentals, weeklyIndicators, monthlyIndicators, patternConfluence, ftConflict, sectorComparison, multiTimeframe, language } = input;
    const { quote } = stock;
-   const { rsi, ma, macd } = indicators;
-
-   const dailyBias = multiTimeframe?.timeframes['1D'].trend || 'neutral';
-   const weeklyBias = multiTimeframe?.timeframes['1W'].trend || 'neutral';
-   const monthlyBias = multiTimeframe?.timeframes['1M'].trend || 'neutral';
-
-   const sr = indicators.sr;
+   const { rsi, ma, macd, volume, sr } = indicators;
 
    const langInstruction = language === 'hi'
-      ? '\n\n🗣️ IMPORTANT: Provide your ENTIRE response in HINDI (हिन्दी / Devanagari script). All analysis, reasoning, risks, and trade plan must be in Hindi. Only keep numbers, stock symbols, and price values in English.\n'
+      ? '\n\nIMPORTANT: Write your ENTIRE analysis in HINDI (Devanagari script). Keep numbers, prices, and stock symbols in English.\n'
       : '';
 
-   return `You are an expert Indian stock market analyst. Analyze the following stock data and give me a clear, actionable trading recommendation.${langInstruction}
+   // Multi-timeframe section
+   let mtfSection = '';
+   if (weeklyIndicators) {
+      mtfSection += `
+WEEKLY TIMEFRAME:
+  RSI: ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation})
+  MACD: ${weeklyIndicators.macd.trend}
+  MA Trend: ${weeklyIndicators.ma.trend}
+  SMA20: ₹${weeklyIndicators.ma.sma20.toFixed(2)}, SMA50: ₹${weeklyIndicators.ma.sma50.toFixed(2)}`;
+   }
+   if (monthlyIndicators) {
+      mtfSection += `
+MONTHLY TIMEFRAME:
+  RSI: ${monthlyIndicators.rsi.value.toFixed(1)} (${monthlyIndicators.rsi.interpretation})
+  MACD: ${monthlyIndicators.macd.trend}
+  MA Trend: ${monthlyIndicators.ma.trend}`;
+   }
 
-📊 STOCK: ${quote.symbol}
-💰 CURRENT PRICE: ₹${quote.price} (Change: ${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent}%)
-📅 Previous Close: ₹${quote.previousClose}
-📈 Day Range: ₹${quote.dayLow} - ₹${quote.dayHigh}
-📊 Volume: ${quote.volume.toLocaleString()} (${indicators.volume.ratio}x average)
+   // Timeframe biases
+   let biasSection = '';
+   if (multiTimeframe) {
+      biasSection = `
+TIMEFRAME BIASES:
+  Daily:   ${multiTimeframe.timeframes['1D']?.trend?.toUpperCase() || 'N/A'}
+  Weekly:  ${multiTimeframe.timeframes['1W']?.trend?.toUpperCase() || 'N/A'}
+  Monthly: ${multiTimeframe.timeframes['1M']?.trend?.toUpperCase() || 'N/A'}
+  Overall alignment: ${multiTimeframe.alignment || 'N/A'}`;
+   }
 
-═══════════════════════════════════════
-TECHNICAL INDICATORS
-═══════════════════════════════════════
+   // Confluence
+   let confluenceSection = '';
+   if (patternConfluence) {
+      confluenceSection = `
+TIMEFRAME CONFLUENCE:
+  Bullish timeframes: ${patternConfluence.bullishTimeframes?.join(', ') || 'None'}
+  Bearish timeframes: ${patternConfluence.bearishTimeframes?.join(', ') || 'None'}
+  Agreement score: ${patternConfluence.score}/100 (${patternConfluence.agreement})`;
+   }
 
-DAILY:
-• RSI (14): ${rsi.value.toFixed(1)} (${rsi.interpretation})
-• MACD: ${macd.trend}
-• Moving Averages: ${ma.trend} (SMA20: ₹${ma.sma20.toFixed(2)}, SMA50: ₹${ma.sma50.toFixed(2)})
-• Support: ₹${sr.support} | Resistance: ₹${sr.resistance}
-• Pattern: ${patterns.primary ? patterns.primary.name + ' (' + patterns.primary.confidence + '% confidence)' : 'No clear pattern'}
-• Trend: ${patterns.trend.direction} (Strength: ${patterns.trend.strength}%)
-• Daily Bias: ${dailyBias.toUpperCase()}
+   // News
+   let newsSection = '';
+   if (news.breakingNews && news.breakingNews.length > 0) {
+      newsSection = `
+BREAKING NEWS:
+${news.breakingNews.map((n: any) => `  - [${n.sentiment.toUpperCase()}] ${n.title}`).join('\n')}
+  Impact: ${news.breakingImpact}`;
+   } else {
+      newsSection = `
+NEWS (last 72 hours):
+  Overall sentiment: ${news.sentiment} (Score: ${news.sentimentScore}%)`;
+   }
 
-WEEKLY:
-${weeklyIndicators ? `• RSI: ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation})
-• MACD: ${weeklyIndicators.macd.trend}
-• Trend: ${weeklyIndicators.ma.trend}
-• Weekly Bias: ${weeklyBias.toUpperCase()}` : '• Data unavailable'}
-
-MONTHLY:
-${monthlyIndicators ? `• RSI: ${monthlyIndicators.rsi.value.toFixed(1)} (${monthlyIndicators.rsi.interpretation})
-• MACD: ${monthlyIndicators.macd.trend}
-• Trend: ${monthlyIndicators.ma.trend}
-• Monthly Bias: ${monthlyBias.toUpperCase()}` : '• Data unavailable'}
-
-${patternConfluence ? `TIMEFRAME CONFLUENCE:
-• Bullish: ${patternConfluence.bullishTimeframes.join(', ') || 'None'}
-• Bearish: ${patternConfluence.bearishTimeframes.join(', ') || 'None'}
-• Agreement: ${patternConfluence.score}/100 (${patternConfluence.agreement})` : ''}
-
-${news.breakingNews && news.breakingNews.length > 0 ? `BREAKING NEWS:
-${news.breakingNews.map((n: any) => `• [${n.sentiment.toUpperCase()}] ${n.title}`).join('\n')}
-• Impact: ${news.breakingImpact}` : `NEWS: Overall sentiment is ${news.sentiment} (Score: ${news.sentimentScore}%)`}
-
+   // Fundamentals
+   const fundSection = `
 FUNDAMENTALS:
-• Valuation: ${fundamentals.valuation} (PE: ${fundamentals.metrics.peRatio})
-• Growth: ${fundamentals.growth}
-${ftConflict?.hasConflict ? `• ⚠️ Fundamental-Technical Conflict: ${ftConflict.conflictType}` : '• No fundamental-technical conflict'}
+  Valuation: ${fundamentals.valuation} (PE: ${fundamentals.metrics.peRatio || 'N/A'}, PB: ${fundamentals.metrics.pbRatio || 'N/A'})
+  Growth: ${fundamentals.growth}
+  Dividend Yield: ${fundamentals.metrics.dividendYield || 'N/A'}%
+${ftConflict?.hasConflict ? `  ⚠️ Fundamental-Technical Conflict: ${ftConflict.conflictType}` : '  No fundamental-technical conflict'}`;
 
-${sectorComparison ? `SECTOR: ${sectorComparison.verdict} (Outperformance: ${sectorComparison.outperformance ? sectorComparison.outperformance.toFixed(2) + '%' : 'N/A'})` : ''}
+   // Sector
+   let sectorSection = '';
+   if (sectorComparison) {
+      sectorSection = `
+SECTOR COMPARISON:
+  Verdict: ${sectorComparison.verdict}
+  Stock change: ${sectorComparison.stockChange?.toFixed(2) || 'N/A'}%
+  Sector change: ${sectorComparison.sectorChange?.toFixed(2) || 'N/A'}%
+  Outperformance: ${sectorComparison.outperformance?.toFixed(2) || 'N/A'}%`;
+   }
 
-═══════════════════════════════════════
+   // System pre-analysis
+   let systemSection = '';
+   if (input.confidenceResult) {
+      const cr = input.confidenceResult;
+      systemSection = `
+SYSTEM PRE-ANALYSIS (our system already computed this — use as reference):
+  Direction: ${cr.direction?.direction || 'N/A'}
+  Conviction: ${cr.direction?.conviction || 'N/A'}%
+  Confidence Score: ${cr.score}/100
+  Recommendation: ${cr.recommendation}
+  Key signals: ${cr.direction?.signalDetails?.slice(0, 6).join(', ') || 'N/A'}`;
+   }
+
+   const patternInfo = patterns.primary
+      ? `${patterns.primary.name} (${patterns.primary.confidence}% confidence, type: ${patterns.primary.type || 'N/A'})`
+      : 'No clear pattern detected';
+
+   return `You are a stock market analyst. Analyze ALL the data below and give a clear trading recommendation.
+${langInstruction}
+READ EVERY SECTION before making your decision. Do not skip any data.
+
+=====================================
+STOCK: ${quote.symbol}
+=====================================
+
+PRICE DATA:
+  Current: ₹${quote.price}
+  Previous Close: ₹${quote.previousClose}
+  Day Change: ${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent}%
+  Day Range: ₹${quote.dayLow} - ₹${quote.dayHigh}
+  Volume: ${quote.volume.toLocaleString()} (${volume.ratio.toFixed(2)}x average)
+  Volume trend: ${volume.trend}
+
+DAILY TECHNICAL INDICATORS:
+  RSI (14): ${rsi.value.toFixed(1)} — ${rsi.interpretation}
+  MACD: ${macd.trend} (line: ${macd.macd}, signal: ${macd.signal}, histogram: ${macd.histogram})
+  MA Trend: ${ma.trend}
+  SMA20: ₹${ma.sma20.toFixed(2)}, SMA50: ₹${ma.sma50.toFixed(2)}, SMA200: ₹${ma.sma200.toFixed(2)}
+  EMA9: ₹${ma.ema9.toFixed(2)}, EMA21: ₹${ma.ema21.toFixed(2)}
+  Support: ₹${sr.support} | Resistance: ₹${sr.resistance}
+
+PATTERN: ${patternInfo}
+TREND: ${patterns.trend.direction} (strength: ${patterns.trend.strength}%)
+${mtfSection}
+${biasSection}
+${confluenceSection}
+${fundSection}
+${sectorSection}
+${newsSection}
+${systemSection}
+
+=====================================
+HOW TO ANALYZE — FOLLOW THESE STEPS
+=====================================
+
+STEP 1 — COUNT THE EVIDENCE
+  Go through EVERY indicator and classify it as bullish, bearish, or neutral:
+  - RSI: Oversold (<30) in UPTREND = bullish bounce. Oversold in DOWNTREND = falling knife (bearish).
+         Overbought (>70) in UPTREND = momentum (mild bullish). Overbought in DOWNTREND = bearish.
+  - MACD: Bullish, bearish, or neutral?
+  - MA Trend: Price above key MAs = bullish, below = bearish
+  - EMA9 vs EMA21: EMA9 > EMA21 = bullish crossover, EMA9 < EMA21 = bearish
+  - Pattern: Is the detected pattern bullish or bearish?
+  - Volume: High volume confirms the current move. Low volume = weak signal.
+  - Weekly/Monthly: Higher timeframes confirming or contradicting daily?
+  Write down your count: X bullish, Y bearish, Z neutral.
+
+STEP 2 — DETERMINE DIRECTION
+  - More bearish signals → stock is BEARISH
+  - More bullish signals → stock is BULLISH
+  - The dominant side gets probability = 55 + (signal_difference × 5), capped at 85
+  - CRITICAL: Do NOT call a stock bullish just because RSI is oversold. If MAs, MACD, pattern, and weekly trend are all bearish, the stock IS bearish regardless of RSI.
+
+STEP 3 — CREATE TRADE PLAN
+  For the dominant direction, set realistic levels:
+  - Entry: near current price or key technical level
+  - Stop loss: beyond nearest support (if bullish) or resistance (if bearish)
+  - Target 1: next key level (60-70% probability)
+  - Target 2: further level (30-50% probability)
+  - Risk-reward must be at least 1:1.5
+
+STEP 4 — GIVE YOUR VERDICT
+
+=====================================
 WHAT I NEED FROM YOU
-═══════════════════════════════════════
+=====================================
 
-Based on the above data, give me a CLEAR and CONCISE analysis:
+1. VERDICT: BULLISH or BEARISH (one word + your confidence %)
 
-1. 🎯 VERDICT: Is this stock BULLISH or BEARISH right now? (One word + confidence %)
+2. TRADE PLAN:
+   Action: BUY / SELL / HOLD
+   Entry: ₹___
+   Stop Loss: ₹___ (% risk)
+   Target 1: ₹___ (probability %)
+   Target 2: ₹___ (probability %)
+   Risk-Reward: ___
+   Holding Period: ___ days
 
-2. 📋 TRADE PLAN (if actionable):
-   • Action: BUY / SELL / WAIT
-   • Entry Price: ₹___
-   • Stop Loss: ₹___ (with % risk)
-   • Target 1: ₹___
-   • Target 2: ₹___
-   • Risk-Reward Ratio: ___
-   • Holding Period: ___ days
+3. KEY REASONING (2-3 lines):
+   Which signals drove your decision? Cite specific numbers.
 
-3. 📝 KEY REASONING (2-3 lines max):
-   Why this direction? What are the strongest signals?
+4. RISKS (bullet points):
+   What could invalidate this trade?
 
-4. ⚠️ RISKS (bullet points):
-   What could go wrong?
+5. TRIGGER:
+   What specific price/event confirms entry?
 
-5. 🔑 TRIGGER:
-   What specific price level or event should confirm the trade?
+Trading constraints: Capital ₹${TRADING.CAPITAL}, max risk ₹${TRADING.MAX_RISK}, swing trading (1-5 days).
 
-Keep the response SHORT and ACTIONABLE. No fluff. I need to make a trading decision based on this.`;
+Be DECISIVE. The market always leans one way — find that lean.`;
 };

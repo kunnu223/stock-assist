@@ -111,13 +111,4 @@ export function detectFundamentalTechnicalConflict(
     };
 }
 
-/**
- * Get human-readable summary
- */
-export function getConflictSummary(conflict: FundamentalTechnicalConflict): string {
-    if (!conflict.hasConflict) {
-        return `✅ Fundamental-technical alignment: ${conflict.fundamentalVerdict}`;
-    }
 
-    return `⚠️ Conflict detected: ${conflict.technicalBias} technical but ${conflict.fundamentalVerdict}`;
-}

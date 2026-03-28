@@ -10,6 +10,7 @@ import { fetchEnhancedNews } from '../news/enhanced';
 import { fetchFundamentals } from '../data/fundamentals';
 import { compareSector } from '../data';
 import { performComprehensiveTechnicalAnalysis, getTechnicalSummary, calculateSplitConfidence, calculatePatternConfluence, detectFundamentalTechnicalConflict } from './index';
+import { composeSignal } from './signalComposer';
 import { calculateRiskMetrics } from './riskMetrics';
 import { classifyRegime } from './regimeClassifier';
 import { evaluateSelectivity } from './tradeSelectivity';
@@ -17,16 +18,44 @@ import { evaluateExpectancy } from './expectancy';
 import { calibrateConfidence } from './calibration';
 import { getModifiersForConditions } from './dataDerivedModifiers';
 import { getMarketBreadth } from './breadth';
-import { buildEnhancedPrompt, buildUserFriendlyPrompt } from '../ai/enhancedPrompt';
+import { buildUserFriendlyPrompt } from '../ai/enhancedPrompt';
 import { analyzeWithEnsemble } from '../ai/ensembleAI';
 import { calcADX } from '../indicators/adx';
 import { calcATR } from '../indicators';
-import { formatAmount, formatPercent } from '../../utils/formatting';
+import { formatAmount } from '../../utils/formatting';
 import { saveSignal, updateSignalOutcomes, getEmpiricalProbability } from '../backtest/signalTracker';
 import { DailyAnalysis } from '../../models';
 import { logger } from '../../config/logger';
 import { generateFallbackAnalysis, buildDefaultBullishScenario, buildDefaultBearishScenario, formatPatternsWithStars } from './responseBuilder';
-import type { StockData } from '@stock-assist/shared';
+
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Determine final recommendation. System direction model takes priority —
+ * it uses weighted technical signals. AI recommendation is only used when
+ * the system says HOLD (uncertain) and the AI has a clear directional call.
+ */
+function sanitizeRecommendation(
+    aiRecommendation: string | undefined,
+    systemRecommendation: string
+): 'BUY' | 'SELL' | 'HOLD' | 'WAIT' {
+    const sys = systemRecommendation.toUpperCase().trim() as 'BUY' | 'SELL' | 'HOLD' | 'WAIT';
+
+    // System has a clear directional call → use it (it's based on weighted technical signals)
+    if (sys === 'BUY' || sys === 'SELL' || sys === 'WAIT') {
+        return sys;
+    }
+
+    // System says HOLD → check if AI has a clear directional call
+    const raw = (aiRecommendation || '').toUpperCase().trim();
+    if (raw === 'BUY' || raw.startsWith('BUY') || raw.includes('BUY ON') || raw.includes('BUY AT')) return 'BUY';
+    if (raw === 'SELL' || raw.startsWith('SELL') || raw.includes('SELL AT') || raw.includes('SHORT')) return 'SELL';
+
+    return 'HOLD';
+}
 
 // ═══════════════════════════════════════════════════════════════
 // MAIN ORCHESTRATOR
@@ -97,7 +126,7 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
 
     logger.info({ symbol, elapsed: ((Date.now() - start) / 1000).toFixed(1) }, 'Data fetch complete');
 
-    // Step 3: Calculate split confidence
+    // Step 3: Calculate split confidence (v5: pass additional context for richer scoring)
     const confidenceResult = calculateSplitConfidence({
         patterns: technicalAnalysis.patterns.daily,
         news: enhancedNews,
@@ -105,7 +134,10 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
         fundamentals,
         weeklyIndicators: technicalAnalysis.indicators.weekly || undefined,
         monthlyIndicators: technicalAnalysis.indicators.monthly || undefined,
-        regime: regimeResult.regime
+        regime: regimeResult.regime,
+        adxValue: adxResult.adx,
+        bollingerPercentB: technicalAnalysis.bollingerBands.percentB,
+        candlestickComposite: technicalAnalysis.candlestickAnalysis.compositeScore,
     });
     logger.debug({ symbol, score: confidenceResult.score, recommendation: confidenceResult.recommendation, direction: confidenceResult.direction.direction }, 'Confidence calculated');
 
@@ -142,7 +174,7 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
     const volumeGatePassed = volumeRatio >= 1.2;
 
     // Data-derived modifiers
-    const derivedMods = await getModifiersForConditions(volumeRatio, alignmentScore, adxResult.adx);
+    const derivedMods = await getModifiersForConditions(volumeRatio, alignmentScore, adxResult.adx, confidenceResult.direction.direction);
     const volumePenaltyFinal = (isBullishBreakout || isBearishBreakout) && volumeRatio < 1.5
         ? -10 : derivedMods.volumeModifier;
     const multiTFPenalty = derivedMods.multiTFModifier;
@@ -156,19 +188,80 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
         logger.debug({ symbol, zone: breadth.zone, breadth: breadth.breadth, modifier: breadthModifier }, 'Breadth modifier applied');
     }
 
-    // Calculate adjusted confidence with ALL gates + data-derived modifiers
+    // Candlestick pattern bonus (±20 points max — v5: increased from ±8)
+    const candlestickBonus = Math.round(technicalAnalysis.candlestickAnalysis.compositeScore * 20);
+    if (candlestickBonus !== 0) {
+        logger.debug({ symbol, bias: technicalAnalysis.candlestickAnalysis.dominantBias, composite: technicalAnalysis.candlestickAnalysis.compositeScore, bonus: candlestickBonus }, 'Candlestick bonus applied');
+    }
+
+    let qualityBonus = 0;
+    if (volumeRatio >= 1.3 && adxResult.adx >= 25 && alignmentScore >= 70) {
+        qualityBonus += 12;
+        logger.debug({ symbol }, 'Quality bonus: strong volume + ADX + alignment (+12)');
+    }
+    if (volumeRatio >= 1.5 && (confidenceResult.direction.direction === 'BULLISH' || confidenceResult.direction.direction === 'BEARISH')) {
+        qualityBonus += 8;
+        logger.debug({ symbol }, 'Quality bonus: high volume with clear direction (+8)');
+    }
+    if (sectorComparison.verdict === 'STRONG_OUTPERFORMER' && confidenceResult.score >= 60) {
+        qualityBonus += 6;
+        logger.debug({ symbol }, 'Quality bonus: sector outperformer + strong score (+6)');
+    }
+
+    // Phase 1: Signal Card (additive — does not affect existing pipeline)
+    const signalCard = composeSignal({
+        ticker: symbol,
+        smc: technicalAnalysis.smcAnalysis,
+        currentPrice: stock.quote.price,
+        atr: technicalAnalysis.indicators.daily.atr,
+        adxValue: adxResult.adx,
+        volumeRatio,
+        weeklyTrend: technicalAnalysis.multiTimeframe.timeframes['1W'].trend,
+        monthlyTrend: technicalAnalysis.multiTimeframe.timeframes['1M'].trend,
+        dailyTrend: technicalAnalysis.multiTimeframe.timeframes['1D'].trend,
+        candlestickAnalysis: technicalAnalysis.candlestickAnalysis,
+    });
+    logger.info({ symbol, status: signalCard.status, conviction: signalCard.convictionScore, direction: signalCard.direction }, 'Signal card composed');
+
+    // Calculate adjusted confidence with ALL gates + data-derived modifiers + v5 quality bonus
     const baseConfidence = confidenceResult.score;
+
+    // Cap total negative modifiers at -15
+    const negativeMods = [
+        Math.min(0, patternConfluence.confidenceModifier),
+        Math.min(0, ftConflict.confidenceAdjustment),
+        Math.min(0, sectorComparison.confidenceModifier),
+        Math.min(0, volumePenaltyFinal),
+        Math.min(0, multiTFPenalty),
+        Math.min(0, adxPenalty),
+        Math.min(0, breadthModifier),
+        Math.min(0, candlestickBonus),
+    ];
+    const positiveMods = [
+        Math.max(0, patternConfluence.confidenceModifier),
+        Math.max(0, ftConflict.confidenceAdjustment),
+        Math.max(0, sectorComparison.confidenceModifier),
+        Math.max(0, volumePenaltyFinal),
+        Math.max(0, multiTFPenalty),
+        Math.max(0, adxPenalty),
+        Math.max(0, breadthModifier),
+        Math.max(0, candlestickBonus),
+        qualityBonus,
+    ];
+    const totalNegative = negativeMods.reduce((a, b) => a + b, 0);
+    const totalPositive = positiveMods.reduce((a, b) => a + b, 0);
+    const cappedNegative = Math.max(-15, totalNegative); // Cap at -15 max penalty
+
     const adjustedConfidence = Math.max(15, Math.min(95,
-        baseConfidence +
-        patternConfluence.confidenceModifier +
-        ftConflict.confidenceAdjustment +
-        sectorComparison.confidenceModifier +
-        volumePenaltyFinal +
-        multiTFPenalty +
-        adxPenalty +
-        breadthModifier
+        baseConfidence + cappedNegative + totalPositive
     ));
-    logger.info({ symbol, base: baseConfidence, adjusted: adjustedConfidence }, 'Confidence adjusted');
+    logger.info({ symbol, base: baseConfidence, adjusted: adjustedConfidence, qualityBonus, totalNegative, cappedNegative, totalPositive }, 'Confidence adjusted');
+
+    // Invert chart alignment for display when direction is bearish
+    const directionForDisplay = confidenceResult.direction.direction;
+    if (directionForDisplay === 'BEARISH' && confidenceResult.breakdown.technicalAlignment < 40) {
+        confidenceResult.breakdown.technicalAlignment = 100 - confidenceResult.breakdown.technicalAlignment;
+    }
 
     // Trade selectivity filter
     const ftSeverity = ftConflict.hasConflict
@@ -250,11 +343,25 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
         multiTimeframe: technicalAnalysis.multiTimeframe,
         language
     };
-    const enhancedPrompt = buildEnhancedPrompt(promptInput);
 
-    // Ensemble AI analysis
+    // Ensemble AI analysis — pass all available data so AI has full picture
     const ensembleResult = await analyzeWithEnsemble(
-        { stock, indicators: technicalAnalysis.indicators.daily, patterns: technicalAnalysis.patterns.daily, news: enhancedNews as any, language },
+        {
+            stock,
+            indicators: technicalAnalysis.indicators.daily,
+            patterns: technicalAnalysis.patterns.daily,
+            news: enhancedNews as any,
+            weeklyIndicators: technicalAnalysis.indicators.weekly || undefined,
+            monthlyIndicators: technicalAnalysis.indicators.monthly || undefined,
+            language,
+            // Extra context for the prompt
+            patternConfluence,
+            fundamentals,
+            sectorComparison,
+            multiTimeframe: technicalAnalysis.multiTimeframe,
+            adx: adxResult,
+            systemDirection: confidenceResult.direction,
+        },
         adjustedConfidence
     );
     let aiAnalysis: Record<string, any> = ensembleResult?.analysis || {};
@@ -288,15 +395,27 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
     let bullishProb: number;
     let bearishProb: number;
     if (confidenceResult.recommendation === 'BUY') {
-        bullishProb = adjustedConfidence;
+        bullishProb = Math.max(55, adjustedConfidence);
         bearishProb = 100 - bullishProb;
     } else if (confidenceResult.recommendation === 'SELL') {
-        bearishProb = adjustedConfidence;
+        bearishProb = Math.max(55, adjustedConfidence);
         bullishProb = 100 - bearishProb;
     } else {
-        const techScore = confidenceResult.breakdown.technicalAlignment;
-        bullishProb = Math.round(Math.max(15, Math.min(85, techScore)));
-        bearishProb = 100 - bullishProb;
+        // For HOLD/WAIT: use direction model to determine lean
+        const dirModel = confidenceResult.direction;
+        if (dirModel.direction === 'BULLISH') {
+            // System leans bullish — scale by conviction (50-85 range)
+            bullishProb = Math.round(Math.max(50, Math.min(85, 50 + dirModel.conviction * 0.35)));
+            bearishProb = 100 - bullishProb;
+        } else if (dirModel.direction === 'BEARISH') {
+            bearishProb = Math.round(Math.max(50, Math.min(85, 50 + dirModel.conviction * 0.35)));
+            bullishProb = 100 - bearishProb;
+        } else {
+            // Truly neutral — use adjusted confidence as a mild lean
+            const techScore = adjustedConfidence;
+            bullishProb = Math.round(Math.max(35, Math.min(65, techScore)));
+            bearishProb = 100 - bullishProb;
+        }
     }
 
     const defaultBullish = buildDefaultBullishScenario(stock, sr, bullishProb, confidenceResult.breakdown.technicalAlignment);
@@ -309,7 +428,9 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
         analysis: {
             stock: stock.symbol,
             currentPrice: formatAmount(stock.quote.price),
-            recommendation: aiAnalysis.recommendation || confidenceResult.recommendation,
+
+            // AI sometimes returns full sentences like "WAIT FOR CLARITY DUE TO..."
+            recommendation: sanitizeRecommendation(aiAnalysis.recommendation, confidenceResult.recommendation),
             confidenceScore: adjustedConfidence,
             timeframe: aiAnalysis.timeframe || 'swing',
 
@@ -340,6 +461,8 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
                     multiTimeframeGate: multiTFPenalty,
                     adxFilter: adxPenalty,
                     breadth: breadthModifier,
+                    candlestickBonus,
+                    qualityBonus,
                     modifierSource: derivedMods.source,
                 },
                 qualityGates: {
@@ -458,6 +581,14 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
                 peRatio: formatAmount(fundamentals.metrics.peRatio)
             },
             candlestickPatterns: technicalAnalysis.candlestickPatterns,
+            candlestickAnalysis: {
+                patterns: technicalAnalysis.candlestickAnalysis.patterns,
+                bullishCount: technicalAnalysis.candlestickAnalysis.bullishCount,
+                bearishCount: technicalAnalysis.candlestickAnalysis.bearishCount,
+                dominantBias: technicalAnalysis.candlestickAnalysis.dominantBias,
+                compositeScore: technicalAnalysis.candlestickAnalysis.compositeScore,
+                summary: technicalAnalysis.candlestickAnalysis.summary,
+            },
             priceTargets: aiAnalysis.priceTargets ? {
                 ...aiAnalysis.priceTargets,
                 entry: formatAmount(aiAnalysis.priceTargets.entry),
@@ -478,13 +609,21 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
             confidenceBreakdown: confidenceResult.breakdown,
             bias: aiAnalysis.bias || (confidenceResult.recommendation === 'BUY' ? 'BULLISH' : confidenceResult.recommendation === 'SELL' ? 'BEARISH' : 'NEUTRAL'),
             confidence: adjustedConfidence > 70 ? 'HIGH' : adjustedConfidence > 50 ? 'MEDIUM' : 'LOW',
-            category: adjustedConfidence > 65 && (confidenceResult.recommendation === 'BUY' || confidenceResult.recommendation === 'SELL')
+            category: adjustedConfidence >= 60 && (confidenceResult.recommendation === 'BUY' || confidenceResult.recommendation === 'SELL')
                 ? 'STRONG_SETUP'
-                : adjustedConfidence < 40
+                : adjustedConfidence < 35
                     ? 'AVOID'
                     : 'NEUTRAL',
-            bullish: aiAnalysis.bullish || defaultBullish,
-            bearish: aiAnalysis.bearish || defaultBearish,
+            // v5.1: Always use system-calculated probabilities (from direction model)
+            // AI ensemble provides scenarios (entry, targets, reasoning) but its probability
+            // can contradict technical direction — e.g., AI says 62% bullish while chart is 88% bearish-aligned.
+            // Fix: use AI scenario structure but override probability with system-calculated values.
+            bullish: aiAnalysis.bullish
+                ? { ...aiAnalysis.bullish, probability: bullishProb }
+                : defaultBullish,
+            bearish: aiAnalysis.bearish
+                ? { ...aiAnalysis.bearish, probability: bearishProb }
+                : defaultBearish,
 
             riskMetrics: {
                 expectedReturn: riskMetrics.expectedReturn,
@@ -495,7 +634,10 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
                 winRate: riskMetrics.winRate
             },
 
-            rawPrompt: buildUserFriendlyPrompt(promptInput)
+            rawPrompt: buildUserFriendlyPrompt(promptInput),
+
+            // Phase 1: Pre-Move Detection Signal Card
+            signalCard,
         }
     };
 
@@ -510,22 +652,56 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
         }
     }
 
-    // Trade selectivity override
+    // Trade selectivity override — v5.1: convergence bypass
+    // If pattern + multi-TF alignment agree strongly, allow the trade through with a warning
+    // even if ADX/volume gates fail (these are common in early-stage moves)
+    const hasConvergence = patternConfluence.score >= 60 && confidenceResult.direction.conviction >= 40;
+
     if (!selectivity.passed && (analysis.recommendation === 'BUY' || analysis.recommendation === 'SELL')) {
-        logger.info({ symbol, reason: selectivity.reason }, 'Selectivity rejected — downgrading to HOLD');
-        analysis.recommendation = 'HOLD';
-        analysis.category = 'NEUTRAL';
-        analysis.reasoning = analysis.reasoning +
-            ` ⚠️ Trade rejected by selectivity filter: ${selectivity.reason}`;
+        const failedGates = selectivity.totalGates - selectivity.passedCount;
+
+        if (hasConvergence && adjustedConfidence >= 50) {
+            // v5.1: Convergence bypass — pattern + TF alignment overrides gate failures
+            logger.info({ symbol, reason: selectivity.reason, failedGates, confluence: patternConfluence.score, conviction: confidenceResult.direction.conviction },
+                'Selectivity bypassed — convergence override');
+            analysis.reasoning = analysis.reasoning +
+                ` ℹ️ Selectivity gates (${failedGates}) bypassed due to strong pattern confluence (${patternConfluence.score}/100).`;
+        } else if (failedGates >= 4) {
+            // Too many failures even with softening → reject to HOLD
+            logger.info({ symbol, reason: selectivity.reason, failedGates }, 'Selectivity rejected — downgrading to HOLD');
+            analysis.recommendation = 'HOLD';
+            analysis.category = 'NEUTRAL';
+            analysis.reasoning = analysis.reasoning +
+                ` ⚠️ Trade rejected by selectivity filter (${failedGates} gates failed): ${selectivity.reason}`;
+        } else if (adjustedConfidence >= 50) {
+            // 1-3 failures with decent confidence → warn only
+            logger.info({ symbol, reason: selectivity.reason, failedGates }, 'Selectivity warning — keeping recommendation');
+            analysis.reasoning = analysis.reasoning +
+                ` ⚠️ Selectivity warning (${failedGates} gate(s)): ${selectivity.reason}`;
+        } else {
+            logger.info({ symbol, reason: selectivity.reason, failedGates }, 'Selectivity rejected — confidence too low');
+            analysis.recommendation = 'HOLD';
+            analysis.category = 'NEUTRAL';
+            analysis.reasoning = analysis.reasoning +
+                ` ⚠️ Trade rejected by selectivity filter: ${selectivity.reason}`;
+        }
     }
 
-    // Expectancy filter override
+    // Expectancy filter override — v5: only reject when data is reliable AND expectancy is clearly negative
     if (!expectancyResult.accepted && (analysis.recommendation === 'BUY' || analysis.recommendation === 'SELL')) {
-        logger.info({ symbol, expectancy: expectancyResult.expectancy, reason: expectancyResult.reason }, 'Expectancy rejected — downgrading to HOLD');
-        analysis.recommendation = 'HOLD';
-        analysis.category = 'NEUTRAL';
-        analysis.reasoning = analysis.reasoning +
-            ` ⚠️ Trade rejected by expectancy filter: Expectancy ${expectancyResult.expectancy.toFixed(3)}% (negative). Win rate ${expectancyResult.winRate}% is misleading.`;
+        if (expectancyResult.dataReliable && expectancyResult.expectancy < -0.5) {
+            // Strong negative expectancy with reliable data → reject
+            logger.info({ symbol, expectancy: expectancyResult.expectancy, reason: expectancyResult.reason }, 'Expectancy rejected — downgrading to HOLD');
+            analysis.recommendation = 'HOLD';
+            analysis.category = 'NEUTRAL';
+            analysis.reasoning = analysis.reasoning +
+                ` ⚠️ Trade rejected by expectancy filter: Expectancy ${expectancyResult.expectancy.toFixed(3)}% (negative).`;
+        } else {
+            // Unreliable data or marginal negative expectancy → warn only
+            logger.info({ symbol, expectancy: expectancyResult.expectancy, reliable: expectancyResult.dataReliable }, 'Expectancy warning — insufficient data to reject');
+            analysis.reasoning = analysis.reasoning +
+                ` ℹ️ Expectancy note: ${expectancyResult.reason}`;
+        }
     }
 
     logger.info({ symbol, processingTime: response.processingTime }, 'Enhanced analysis complete');

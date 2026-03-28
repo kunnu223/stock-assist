@@ -1,10 +1,10 @@
-/**
- * Analysis Services Index
- * @module @stock-assist/api/services/analysis
- */
-
-export { getCandlestickPatternNames } from './candlestick';
+export { getCandlestickPatternNames, detectCandlestickPatterns } from './candlestick';
+export type { CandlestickAnalysis, CandlestickPattern } from './candlestick';
 export { calculateConfidence, calculateSplitConfidence } from './confidenceScoring';
 export { performComprehensiveTechnicalAnalysis, getTechnicalSummary } from './technicalAnalysis';
 export { calculatePatternConfluence } from './patternConfluence';
 export { detectFundamentalTechnicalConflict } from './fundamentalTechnical';
+export { analyzeSMC } from './smc';
+export { calculateEntryZone } from './entryZone';
+export { composeSignal } from './signalComposer';
+export type { ComposeSignalInput } from './signalComposer';

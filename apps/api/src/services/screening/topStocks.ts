@@ -1,12 +1,13 @@
 /**
- * Top Stocks Service (Enhanced)
- * Screens NIFTY 100 stocks using code-level signal clarity scoring
- * with quality gates, signal persistence, and parallel processing.
+ * Top Stocks Service (v2 — Expanded Universe)
+ * Screens 200+ stocks using code-level signal clarity scoring
+ * with quality gates, signal persistence, ADX trend filtering,
+ * and parallel processing.
  *
- * Pipeline: NIFTY 100 → Pre-Filter → Clarity Filter → Quality Gates → Top 10
+ * Pipeline: SCREENING_UNIVERSE (200+) → Pre-Filter → Clarity Filter → Quality Gates → Top 10
  */
 
-import { NIFTY_100, STOCK_NAMES } from '@stock-assist/shared';
+import { SCREENING_UNIVERSE, STOCK_NAMES } from '@stock-assist/shared';
 import { fetchHistory } from '../data/yahooHistory';
 import { fetchQuote } from '../data/yahooQuote';
 import { DailyTopStocks, type IStockPick } from '../../models/DailyTopStocks';
@@ -176,20 +177,20 @@ export const screenStocksForClarity = async (): Promise<{
         passedQualityGates: number;
     };
 }> => {
-    const universe = NIFTY_100;
-    logger.info({ count: universe.length }, 'Screening stocks');
+    const universe = SCREENING_UNIVERSE;
+    logger.info({ count: universe.length }, 'Screening expanded universe');
 
-    // ── Stage 0: Pre-Filter (parallel batches of 5) ──
+    // ── Stage 0: Pre-Filter (parallel batches of 8 for larger universe) ──
     logger.info('Stage 0: Pre-filtering');
     const preFiltered: PreFilterResult[] = [];
-    const batches = chunk(universe, 5);
+    const batches = chunk(universe, 8);
 
     for (const batch of batches) {
         const batchResults = await Promise.all(batch.map(preFilterStock));
         for (const result of batchResults) {
             if (result) preFiltered.push(result);
         }
-        await delay(1000); // Respect rate limits between batches
+        await delay(800); // Respect rate limits between batches
     }
 
     logger.info({ from: universe.length, to: preFiltered.length }, 'Pre-filter complete');
@@ -347,7 +348,7 @@ export const getTodayTopStocks = async (forceRefresh: boolean = false): Promise<
             date: today,
             stocks: top10,
             totalAnalyzed: stats.passedQualityGates,
-            totalScanned: NIFTY_100.length,
+            totalScanned: SCREENING_UNIVERSE.length,
             createdAt: new Date(),
             // Enhanced metadata
             passedPreFilter: stats.passedPreFilter,

@@ -68,9 +68,12 @@ export const calcMACD = (prices: number[]): MACDResult => {
     const signal = Number(signalArray[signalArray.length - 1].toFixed(2));
     const histogram = Number(histogramArray[histogramArray.length - 1].toFixed(2));
 
+    // Histogram direction is primary signal, MACD line position is confirmation
     let trend: 'bullish' | 'bearish' | 'neutral' = 'neutral';
     if (histogram > 0 && macd > 0) trend = 'bullish';
     else if (histogram < 0 && macd < 0) trend = 'bearish';
+    else if (histogram > 0 && macd < 0) trend = 'bullish';
+    else if (histogram < 0 && macd > 0) trend = 'bearish';
 
     let divergence: 'bullish' | 'bearish' | 'none' = 'none';
     const LOOKBACK = 20;

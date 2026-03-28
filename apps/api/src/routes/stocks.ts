@@ -4,7 +4,7 @@
  */
 
 import express, { Request, Response, NextFunction } from 'express';
-import { NIFTY_100 } from '@stock-assist/shared';
+import { SCREENING_UNIVERSE } from '@stock-assist/shared';
 import { getTodayTopStocks, getYesterdayTopStocks } from '../services/screening/topStocks';
 import { screeningLimiter } from '../middleware/rateLimiter';
 import { logger } from '../config/logger';
@@ -43,7 +43,7 @@ router.get('/top-10', async (req: Request, res: Response, next: NextFunction) =>
             success: true,
             stocks,
             count: stocks.length,
-            totalScanned: NIFTY_100.length,
+            totalScanned: SCREENING_UNIVERSE.length,
             updatedAt: stocks[0]?.updatedAt || new Date(),
             metadata: {
                 cached: true,
@@ -71,7 +71,7 @@ router.get('/top-10', async (req: Request, res: Response, next: NextFunction) =>
  */
 router.post('/top-10/refresh', screeningLimiter, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        logger.info({ totalStocks: NIFTY_100.length }, 'POST /api/stocks/top-10/refresh — Screening stocks');
+        logger.info({ totalStocks: SCREENING_UNIVERSE.length }, 'POST /api/stocks/top-10/refresh — Screening stocks');
         const startTime = Date.now();
 
         const stocks = await getTodayTopStocks(true);
@@ -92,9 +92,9 @@ router.post('/top-10/refresh', screeningLimiter, async (req: Request, res: Respo
             success: true,
             stocks,
             count: stocks.length,
-            totalScanned: NIFTY_100.length,
+            totalScanned: SCREENING_UNIVERSE.length,
             updatedAt: new Date(),
-            message: `Screened ${NIFTY_100.length} stocks → selected top ${stocks.length}`,
+            message: `Screened ${SCREENING_UNIVERSE.length} stocks → selected top ${stocks.length}`,
             metadata: {
                 cached: false,
                 scanDuration: `${scanDuration}s`,

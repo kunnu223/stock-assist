@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { StockAnalysis } from '@stock-assist/shared';
 import { Target, ShieldAlert, Calendar, ArrowRight, ExternalLink, Star } from 'lucide-react';
-import { calcPositionSize, formatPrice } from '@stock-assist/shared';
+import { formatPrice } from '@stock-assist/shared';
 import { useWatchlist } from '@/context/WatchlistContext';
 
 interface Props {

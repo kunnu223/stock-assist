@@ -7,7 +7,10 @@ import type { OHLCData, TechnicalIndicators, PatternAnalysis } from '@stock-assi
 import { calcIndicators } from '../indicators';
 import { analyzePatterns } from '../patterns';
 import { calcBollingerBands, calcFibonacciLevels } from '../indicators/bollinger';
-import { getCandlestickPatternNames } from './candlestick';
+import { detectCandlestickPatterns, getCandlestickPatternNames } from './candlestick';
+import type { CandlestickAnalysis } from './candlestick';
+import { analyzeSMC } from './smc';
+import type { SMCAnalysis } from '@stock-assist/shared';
 import { logger } from '../../config/logger';
 
 // Local type definitions
@@ -40,6 +43,7 @@ interface TimeframeData {
 interface ComprehensiveTechnicalAnalysis {
     multiTimeframe: MultiTimeframeAnalysis;
     candlestickPatterns: string[];
+    candlestickAnalysis: CandlestickAnalysis;
     bollingerBands: ReturnType<typeof calcBollingerBands>;
     fibonacciLevels: ReturnType<typeof calcFibonacciLevels>;
     indicators: {
@@ -52,6 +56,7 @@ interface ComprehensiveTechnicalAnalysis {
         weekly: PatternAnalysis | null;
         monthly: PatternAnalysis | null;
     };
+    smcAnalysis: SMCAnalysis;
 }
 
 /**
@@ -154,13 +159,18 @@ export const performComprehensiveTechnicalAnalysis = (
     const weeklyPatterns = weekly.length >= 5 ? analyzePatterns(weekly) : null;
     const monthlyPatterns = monthly.length >= 5 ? analyzePatterns(monthly) : null;
 
-    // Candlestick patterns from daily data
+    // Candlestick patterns from daily data (full analysis + string names)
+    const candlestickAnalysis = detectCandlestickPatterns(daily);
     const candlestickPatterns = getCandlestickPatternNames(daily);
 
     // Bollinger Bands from daily data
     const prices = daily.map((d) => d.close);
     const bollingerBands = calcBollingerBands(prices);
     const fibonacciLevels = calcFibonacciLevels(prices);
+
+    // SMC Analysis (Phase 1 — additive, does not affect existing pipeline)
+    const smcAnalysis = analyzeSMC(daily, dailyIndicators.atr);
+    logger.debug({ trend: smcAnalysis.trendState, obs: smcAnalysis.orderBlocks.length, choch: smcAnalysis.chochEvents.length }, 'SMC analysis complete');
 
     return {
         multiTimeframe: {
@@ -173,6 +183,7 @@ export const performComprehensiveTechnicalAnalysis = (
             alignmentScore,
         },
         candlestickPatterns,
+        candlestickAnalysis,
         bollingerBands,
         fibonacciLevels,
         indicators: {
@@ -185,6 +196,7 @@ export const performComprehensiveTechnicalAnalysis = (
             weekly: weeklyPatterns,
             monthly: monthlyPatterns,
         },
+        smcAnalysis,
     };
 };
 
@@ -192,7 +204,7 @@ export const performComprehensiveTechnicalAnalysis = (
  * Get summary of technical analysis for AI prompt
  */
 export const getTechnicalSummary = (analysis: ComprehensiveTechnicalAnalysis): string => {
-    const { multiTimeframe, candlestickPatterns, bollingerBands, fibonacciLevels, indicators } = analysis;
+    const { multiTimeframe, candlestickPatterns, candlestickAnalysis, bollingerBands, fibonacciLevels, indicators } = analysis;
 
     const lines: string[] = [
         `MULTI-TIMEFRAME ANALYSIS:`,
@@ -213,10 +225,11 @@ export const getTechnicalSummary = (analysis: ComprehensiveTechnicalAnalysis): s
         `• Position: ${bollingerBands.position} (%B: ${bollingerBands.percentB})`,
         ``,
         `FIBONACCI LEVELS:`,
-        fibonacciLevels.levels.map((l) => `• ${l.level}: ₹${l.price}`).join('\n'),
+        fibonacciLevels.levels.map((l: { level: string; price: number }) => `• ${l.level}: ₹${l.price}`).join('\n'),
         ``,
         `CANDLESTICK PATTERNS:`,
         candlestickPatterns.length > 0 ? candlestickPatterns.map((p) => `• ${p}`).join('\n') : '• No significant patterns',
+        candlestickAnalysis.patterns.length > 0 ? `• Dominant Bias: ${candlestickAnalysis.dominantBias} (score: ${candlestickAnalysis.compositeScore.toFixed(2)})` : '',
         ``,
         `KEY SUPPORT/RESISTANCE:`,
         `• Daily Support: ₹${multiTimeframe.timeframes['1D'].keyLevels.support}`,

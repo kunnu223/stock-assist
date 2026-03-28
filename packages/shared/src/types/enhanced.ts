@@ -29,8 +29,20 @@ export interface MultiTimeframeAnalysis {
 export interface CandlestickPattern {
     name: string;
     type: 'bullish' | 'bearish' | 'neutral';
-    reliability: 'high' | 'medium' | 'low';
+    strength: 'weak' | 'moderate' | 'strong';
+    confidenceWeight: number;
     description: string;
+    candles: number;
+}
+
+/** Candlestick analysis result */
+export interface CandlestickAnalysis {
+    patterns: CandlestickPattern[];
+    bullishCount: number;
+    bearishCount: number;
+    dominantBias: 'bullish' | 'bearish' | 'neutral';
+    compositeScore: number;
+    summary: string;
 }
 
 /** Bollinger Bands */
@@ -143,4 +155,108 @@ export interface EnhancedStockAnalysis {
     reasoning: string;
     validUntil: string;
     confidenceBreakdown: ConfidenceBreakdown;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Phase 1: Pre-Move Detection Engine — SMC Types
+// ═══════════════════════════════════════════════════════════════
+
+/** Swing point (high or low) identified in price action */
+export interface SwingPoint {
+    index: number;
+    price: number;
+    type: 'high' | 'low';
+}
+
+/** Multi-timeframe alignment for SMC signals */
+export interface MTFAlignment {
+    weeklyTrend: 'bullish' | 'bearish' | 'neutral';
+    dailySetup: 'bullish' | 'bearish' | 'none';
+    alignmentScore: number;    // 0–100
+    alignmentValid: boolean;   // true if alignmentScore >= 60
+}
+
+/** Institutional Order Block zone */
+export interface OrderBlock {
+    zone: { high: number; low: number };
+    type: 'bullish' | 'bearish';
+    status: 'mitigated' | 'unmitigated';
+    age: number;               // candles since formation
+    strengthBoost: number;     // volume/sweep boost factor
+    formationIndex: number;    // index where OB was formed
+}
+
+/** Fair Value Gap — price imbalance zone */
+export interface FairValueGap {
+    zone: { high: number; low: number };
+    type: 'bullish' | 'bearish';
+    filled: boolean;
+    createdAtIndex: number;
+}
+
+/** Change of Character event — early reversal signal */
+export interface CHoCHEvent {
+    type: 'bullish' | 'bearish';
+    index: number;
+    priceAtEvent: number;
+    confirmed: boolean;        // true when next candle closes ≥ 0.3×ATR beyond CHoCH level
+}
+
+/** Break of Structure event — trend continuation */
+export interface BOSEvent {
+    type: 'bullish' | 'bearish';
+    index: number;
+    priceAtEvent: number;
+}
+
+/** Liquidity Sweep — stop-hunt reversal signal */
+export interface LiquiditySweep {
+    type: 'bullish' | 'bearish';
+    sweepExtreme: number;      // the wick price beyond the swing point
+    closePrice: number;        // where candle closed back
+    confirmed: boolean;        // next candle moved ≥ 0.5×ATR in reversal direction
+    convictionBoost: number;   // +0.15 if sweep is at an OB zone
+    index: number;
+}
+
+/** Complete Smart Money Concepts analysis result */
+export interface SMCAnalysis {
+    orderBlocks: OrderBlock[];
+    fairValueGaps: FairValueGap[];
+    bosEvents: BOSEvent[];
+    chochEvents: CHoCHEvent[];
+    liquiditySweeps: LiquiditySweep[];
+    swingPoints: SwingPoint[];
+    trendState: 'uptrend' | 'downtrend' | 'ranging';
+}
+
+/** Calculated entry zone with risk management levels */
+export interface EntryZone {
+    entryZoneLow: number;
+    entryZoneHigh: number;
+    stopLoss: number;
+    target1: number;
+    target2: number;
+    riskReward: number;
+    isValid: boolean;          // false if R:R < 1:2
+    entryTrigger: 'OrderBlock' | 'FVG' | 'LiquiditySweep';
+}
+
+/** Complete signal card — final output of the pre-move detection engine */
+export interface SignalCard {
+    ticker: string;
+    direction: 'bullish' | 'bearish' | 'none';
+    status: 'SETUP_ACTIVE' | 'WAITING_FOR_ENTRY' | 'NO_SETUP';
+    convictionScore: number;   // 0–100
+    entryZone: EntryZone | null;
+    explanation: string[];     // plain-language "Why this setup" bullets
+    mtfAlignment: MTFAlignment;
+    smcSummary: {
+        trendState: 'uptrend' | 'downtrend' | 'ranging';
+        orderBlockCount: number;
+        unmitigatedOBCount: number;
+        unfilledFVGCount: number;
+        chochDetected: boolean;
+        sweepDetected: boolean;
+    };
 }
