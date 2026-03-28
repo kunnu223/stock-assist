@@ -341,7 +341,14 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
         ftConflict,
         sectorComparison,
         multiTimeframe: technicalAnalysis.multiTimeframe,
-        language
+        language,
+        // v6: pass all computed data to prompts
+        smcAnalysis: technicalAnalysis.smcAnalysis,
+        signalCard,
+        candlestickAnalysis: technicalAnalysis.candlestickAnalysis,
+        bollingerBands: technicalAnalysis.bollingerBands,
+        regime: regimeResult,
+        atr: atrCurrent,
     };
 
     // Ensemble AI analysis — pass all available data so AI has full picture
@@ -361,6 +368,13 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
             multiTimeframe: technicalAnalysis.multiTimeframe,
             adx: adxResult,
             systemDirection: confidenceResult.direction,
+            // v6: pass all computed data to AI prompt
+            smcAnalysis: technicalAnalysis.smcAnalysis,
+            signalCard,
+            candlestickAnalysis: technicalAnalysis.candlestickAnalysis,
+            bollingerBands: technicalAnalysis.bollingerBands,
+            regime: regimeResult,
+            atr: atrCurrent,
         },
         adjustedConfidence
     );
