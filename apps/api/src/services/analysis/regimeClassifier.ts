@@ -185,7 +185,7 @@ export async function getEmpiricalWeightsForRegime(
             reliable: totalSamples >= MIN_SIGNALS_FOR_EMPIRICAL_WEIGHTS,
         };
     } catch (error) {
-        logger.error(`[RegimeClassifier] Error computing empirical weights for ${regime}:`, error);
+        logger.error({ err: error }, `[RegimeClassifier] Error computing empirical weights for ${regime}`);
         return null;
     }
 }

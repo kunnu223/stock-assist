@@ -10,6 +10,9 @@ import type { SeasonalityResult } from './seasonality';
 import type { MacroContext } from './macroContext';
 import type { PriceVolumeSignal, CommodityConfidenceResult } from './indicators';
 import type { CrashDetectionResult } from './crashDetection';
+import type { BollingerBands } from '../indicators/bollinger';
+import type { ADXResult } from '../indicators/adx';
+import type { CandlestickAnalysis } from '../analysis/candlestick';
 
 export interface CommodityPromptInput {
   commodity: CommodityPriceData;
@@ -24,6 +27,9 @@ export interface CommodityPromptInput {
   newsHeadlines: string[];
   language?: string;
   exchange?: string;
+  bollingerBands?: BollingerBands;
+  adxResult?: ADXResult;
+  candlestickAnalysis?: CandlestickAnalysis;
   exchangePricing?: {
     currencySymbol: string;
     currency: string;
@@ -41,7 +47,7 @@ export interface CommodityPromptInput {
  * Build the commodity analysis prompt
  */
 export function buildCommodityPrompt(input: CommodityPromptInput): string {
-  const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines, language, exchange, exchangePricing } = input;
+  const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines, language, exchange, exchangePricing, bollingerBands, adxResult, candlestickAnalysis } = input;
 
   const langInstruction = language === 'hi'
     ? 'IMPORTANT: Provide the response in HINDI language (Devanagari script) for all text fields (summary, reasoning, action, etc). Keep JSON keys in English.'
@@ -85,11 +91,19 @@ ${exchangeInstruction}
 - **S/R**: Support ${cs}${fmtPrice(support)} | Resistance ${cs}${fmtPrice(resistance)} | Pivot ${cs}${fmtPrice(indicators.sr.pivot)}
 - **ATR**: ${fmtPrice(atr)}
 - **Volume Trend**: ${indicators.volume.trend} (ratio: ${indicators.volume.ratio.toFixed(2)}x)
+${bollingerBands ? `- **Bollinger Bands**: Upper ${cs}${fmtPrice(bollingerBands.upper)} | Middle ${cs}${fmtPrice(bollingerBands.middle)} | Lower ${cs}${fmtPrice(bollingerBands.lower)} | Position: ${bollingerBands.position} | %B: ${bollingerBands.percentB.toFixed(2)} | Bandwidth: ${bollingerBands.bandwidth.toFixed(4)}` : ''}
+${adxResult ? `- **ADX**: ${adxResult.adx.toFixed(1)} (${adxResult.trendStrength}) | +DI: ${adxResult.plusDI.toFixed(1)} | -DI: ${adxResult.minusDI.toFixed(1)} | Trend: ${adxResult.trendDirection}` : ''}
 ${weeklyIndicators ? `
 ## WEEKLY INDICATORS
 - **RSI(14)**: ${weeklyIndicators.rsi.value.toFixed(1)} — ${weeklyIndicators.rsi.interpretation}
 - **MACD Trend**: ${weeklyIndicators.macd.trend}
 - **MA Trend**: ${weeklyIndicators.ma.trend}
+` : ''}
+${candlestickAnalysis && candlestickAnalysis.patterns.length > 0 ? `
+## CANDLESTICK PATTERNS
+- **Dominant Bias**: ${candlestickAnalysis.dominantBias} (composite score: ${candlestickAnalysis.compositeScore.toFixed(2)})
+- **Summary**: ${candlestickAnalysis.summary}
+${candlestickAnalysis.patterns.slice(0, 5).map(p => `- ${p.type === 'bullish' ? '🟢' : p.type === 'bearish' ? '🔴' : '⚪'} **${p.name}** (${p.strength}, weight: ${p.confidenceWeight.toFixed(2)}) — ${p.description}`).join('\n')}
 ` : ''}
 
 ## PRICE-VOLUME ANALYSIS
@@ -132,6 +146,28 @@ CRITICAL RULES:
 5. Confidence between 20-95 only; higher = more conviction
 6. If system confidence is ${confidence.score}%, your confidence should be within ±15 of it
 7. Stop losses MUST always be tighter than targets (risk/reward > 1.5)
+
+3-TIER ANALYSIS FRAMEWORK (MANDATORY):
+Tier 1 — TREND (weight 40%): MA trend, MACD direction, ADX strength, weekly bias
+Tier 2 — MOMENTUM (weight 30%): RSI, Bollinger %B, candlestick patterns, volume confirmation
+Tier 3 — CONTEXT (weight 30%): Seasonality, macro/DXY, crash risk, news sentiment
+
+RSI ANTI-BIAS RULES:
+- RSI 30-70 is NEUTRAL — do NOT use it to justify direction
+- RSI > 70: only bearish if MACD also bearish AND price at Bollinger upper band
+- RSI < 30: only bullish if MACD also bullish AND price at Bollinger lower band
+- Cite the ACTUAL RSI value; never say "RSI indicates bullish" when RSI is 45-55
+
+ADX-BASED CONFIDENCE CAPS:
+- ADX > 25 (trending): trust directional signals, allow confidence up to 90%
+- ADX 20-25 (moderate): reduce confidence by 5-10%
+- ADX < 20 (choppy): cap confidence at 65%, prefer WAIT/HOLD actions
+
+BOLLINGER BAND RULES:
+- Price above upper band: overbought squeeze likely, reduce bullish confidence
+- Price below lower band: oversold bounce likely, reduce bearish confidence
+- Bandwidth narrowing (squeeze): expect breakout, flag as high-priority watch
+- %B > 1.0 or < 0.0: extreme — reversal probability increases
 
 PLAN B RULES (MANDATORY — Loss Prevention):
 8. Every horizon MUST include a "planB" — what to do if the trade goes AGAINST you
@@ -233,7 +269,7 @@ Respond with this EXACT JSON structure:
  * Same data as the internal prompt but asks for clear, actionable, human-readable output
  */
 export function buildUserFriendlyCommodityPrompt(input: CommodityPromptInput): string {
-  const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines, language, exchange, exchangePricing } = input;
+  const { commodity, dxy, indicators, weeklyIndicators, seasonality, macro, priceVolume, confidence, crash, newsHeadlines, language, exchange, exchangePricing, bollingerBands, adxResult, candlestickAnalysis } = input;
 
   const isINR = exchange === 'MCX' || exchange === 'SPOT';
   const cs = isINR && exchangePricing ? exchangePricing.currencySymbol : '$';
@@ -275,11 +311,21 @@ DAILY:
 • Support: ${cs}${fmtPrice(support)} | Resistance: ${cs}${fmtPrice(resistance)}
 • ATR: ${cs}${fmtPrice(atr)}
 • Volume Trend: ${indicators.volume.trend} (${indicators.volume.ratio.toFixed(2)}x avg)
+${bollingerBands ? `• Bollinger Bands: Upper ${cs}${fmtPrice(bollingerBands.upper)} | Middle ${cs}${fmtPrice(bollingerBands.middle)} | Lower ${cs}${fmtPrice(bollingerBands.lower)}
+• Bollinger Position: ${bollingerBands.position} | %B: ${bollingerBands.percentB.toFixed(2)} | Bandwidth: ${bollingerBands.bandwidth.toFixed(4)}` : ''}
+${adxResult ? `• ADX: ${adxResult.adx.toFixed(1)} (${adxResult.trendStrength}) — +DI: ${adxResult.plusDI.toFixed(1)} / -DI: ${adxResult.minusDI.toFixed(1)} — Trend: ${adxResult.trendDirection}` : ''}
 
 ${weeklyIndicators ? `WEEKLY:
 • RSI: ${weeklyIndicators.rsi.value.toFixed(1)} (${weeklyIndicators.rsi.interpretation})
 • MACD: ${weeklyIndicators.macd.trend}
 • MA Trend: ${weeklyIndicators.ma.trend}` : ''}
+${candlestickAnalysis && candlestickAnalysis.patterns.length > 0 ? `
+═══════════════════════════════════════
+CANDLESTICK PATTERNS
+═══════════════════════════════════════
+• Dominant Bias: ${candlestickAnalysis.dominantBias} (composite score: ${candlestickAnalysis.compositeScore.toFixed(2)})
+• Summary: ${candlestickAnalysis.summary}
+${candlestickAnalysis.patterns.slice(0, 5).map(p => `• ${p.type === 'bullish' ? '🟢' : p.type === 'bearish' ? '🔴' : '⚪'} ${p.name} (${p.strength}, weight: ${p.confidenceWeight.toFixed(2)}) — ${p.description}`).join('\n')}` : ''}
 
 ═══════════════════════════════════════
 COMMODITY-SPECIFIC ANALYSIS
@@ -343,6 +389,14 @@ Based on the above data, give me a CLEAR and CONCISE analysis:
    • What to do if price drops/rises against position
    • Max acceptable loss
    • Recovery strategy
+
+ANALYSIS RULES:
+- Use 3-tier framework: TREND (MA/MACD/ADX), MOMENTUM (RSI/Bollinger/Candlestick), CONTEXT (Seasonality/Macro/Crash)
+- RSI 30-70 is neutral — don't use it to justify direction
+- ADX < 20 means choppy market — prefer WAIT/HOLD, cap confidence at 65%
+- ADX > 25 means trending — trust directional signals
+- Bollinger %B > 1.0 or < 0.0 means extreme — expect reversal
+- Cite SPECIFIC data values in your reasoning (RSI value, ADX reading, Bollinger position, candlestick pattern names)
 
 Keep the response SHORT and ACTIONABLE. No fluff. I need to make a trading decision based on this.`;
 }

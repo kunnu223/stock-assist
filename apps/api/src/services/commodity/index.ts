@@ -6,7 +6,8 @@
 
 import Groq from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { calcIndicators } from '../indicators';
+import { calcIndicators, calcBollingerBands, calcADX } from '../indicators';
+import { detectCandlestickPatterns } from '../analysis/candlestick';
 import { fetchEnhancedNews } from '../news/enhanced';
 import type { OHLCData } from '@stock-assist/shared';
 
@@ -185,7 +186,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
                 }
             }
         } catch (err) {
-            logger.warn(`[Commodity AI] Groq init failed:`, (err as Error).message);
+            logger.warn({ err }, `[Commodity AI] Groq init failed`);
         }
     }
 
@@ -206,7 +207,7 @@ async function runCommodityAI(promptText: string): Promise<{ result: any; model:
                 }
             }
         } catch (err) {
-            logger.warn(`[Commodity AI] Gemini failed:`, (err as Error).message);
+            logger.warn({ err }, `[Commodity AI] Gemini failed`);
         }
     }
 
@@ -257,6 +258,13 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
     const weeklyIndicators = dataBundle.commodity.weeklyHistory.length >= 10
         ? calcIndicators(dataBundle.commodity.weeklyHistory)
         : undefined;
+
+    // Stage 2b: Additional indicators (Bollinger, ADX, Candlestick)
+    const prices = dataBundle.commodity.history.map(d => d.close);
+    const bollingerBands = calcBollingerBands(prices);
+    const adxResult = calcADX(dataBundle.commodity.history);
+    const candlestickAnalysis = detectCandlestickPatterns(dataBundle.commodity.history);
+    logger.info(`[Commodity] Bollinger: ${bollingerBands.position} | ADX: ${adxResult.adx.toFixed(1)} (${adxResult.trendStrength}) | Candles: ${candlestickAnalysis.dominantBias} (${candlestickAnalysis.patterns.length} patterns)`);
 
     // â”€â”€ Stage 3: Commodity-Specific Analysis â”€â”€
     logger.info(`[Commodity] ðŸ” Stage 3: Commodity-specific analysis...`);
@@ -314,6 +322,9 @@ export async function analyzeCommodity(symbol: string, exchange: Exchange = 'COM
         newsHeadlines,
         language,
         exchange,
+        bollingerBands,
+        adxResult,
+        candlestickAnalysis,
         exchangePricing: exchange !== 'COMEX' ? {
             currencySymbol: exchangePricing.currencySymbol,
             currency: exchangePricing.currency,
@@ -625,7 +636,7 @@ async function updatePendingPredictions(symbol: string, history: OHLCData[]) {
             }
         }
     } catch (e) {
-        logger.error(`[Backtest] Error updating ${symbol}:`, e);
+        logger.error({ err: e }, `[Backtest] Error updating ${symbol}`);
     }
 }
 

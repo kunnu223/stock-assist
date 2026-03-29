@@ -9,6 +9,10 @@ import {
     Copy, Check
 } from 'lucide-react';
 import { CollapsibleSection } from '@/components/ui/CollapsibleSection';
+import { StockChart } from '@/components/chart/StockChart';
+import { useCommodityChartData } from '@/hooks/useCommodityChartData';
+import { CHART_COLORS } from '@/constants';
+import type { ChartMarker, PriceProjection } from '@/types';
 import { PlanBCard } from './PlanBCard';
 import { SignalStrengthBadge } from './SignalStrengthBadge';
 import { PositionSizer } from './PositionSizer';
@@ -35,6 +39,82 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
     const [hasLogged, setHasLogged] = useState(false);
     const [copied, setCopied] = useState(false);
 
+    // Chart data
+    const {
+        data: chartData,
+        range: chartRange,
+        setRange: setChartRange,
+        isLoading: chartLoading,
+        refresh: refreshChart,
+        refreshInterval: chartRefreshInterval,
+    } = useCommodityChartData({
+        symbol: data.commodity,
+        enabled: !!data.commodity,
+        refreshInterval: 30,
+    });
+
+    // Build chart markers from trade plan
+    const chartMarkers: ChartMarker[] = (() => {
+        const m: ChartMarker[] = [];
+        const plan = data.multiHorizonPlan?.today;
+        if (!plan) return m;
+
+        if (Array.isArray(plan.entry) && plan.entry.length >= 2) {
+            const lo = Number(plan.entry[0]);
+            const hi = Number(plan.entry[1]);
+            // If entry range is narrow (<1% spread), just show one line
+            if (lo > 0 && hi > 0) {
+                if (Math.abs(hi - lo) / lo < 0.01) {
+                    m.push({ price: (lo + hi) / 2, label: 'Entry', color: CHART_COLORS.ENTRY_ZONE, lineStyle: 'dashed' });
+                } else {
+                    m.push(
+                        { price: lo, label: 'Entry', color: CHART_COLORS.ENTRY_ZONE, lineStyle: 'dashed' },
+                        { price: hi, label: '', color: CHART_COLORS.ENTRY_ZONE, lineStyle: 'dashed' },
+                    );
+                }
+            }
+        }
+        if (plan.stopLoss) {
+            m.push({ price: Number(plan.stopLoss), label: 'SL', color: CHART_COLORS.STOP_LOSS, lineStyle: 'solid' });
+        }
+        if (plan.target) {
+            m.push({ price: Number(plan.target), label: 'TP', color: CHART_COLORS.TARGET_1, lineStyle: 'dashed' });
+        }
+        return m;
+    })();
+
+    // Build future price projections — only forecast paths, no duplicates of markers
+    const chartProjections: PriceProjection[] = (() => {
+        const projections: PriceProjection[] = [];
+        const plan = data.multiHorizonPlan;
+        if (!plan || !data.currentPrice) return projections;
+
+        // Use next week's target range for the two forecast paths (upside + downside)
+        const nextWeek = plan.nextWeek;
+        if (nextWeek?.targetRange && Array.isArray(nextWeek.targetRange) && nextWeek.targetRange.length >= 2) {
+            const high = Number(nextWeek.targetRange[1]);
+            const low = Number(nextWeek.targetRange[0]);
+            if (high > 0 && low > 0) {
+                const isBullish = nextWeek.scenario !== 'BEARISH';
+                projections.push({
+                    label: 'Upside',
+                    targetPrice: high,
+                    probability: isBullish ? (nextWeek.probability || 55) : Math.max(10, 100 - (nextWeek.probability || 55)),
+                    type: 'bullish',
+                    daysAhead: 7,
+                });
+                projections.push({
+                    label: 'Downside',
+                    targetPrice: low,
+                    probability: isBullish ? Math.max(10, 100 - (nextWeek.probability || 55)) : (nextWeek.probability || 55),
+                    type: 'bearish',
+                    daysAhead: 7,
+                });
+            }
+        }
+
+        return projections;
+    })();
 
     useEffect(() => {
         setHasLogged(false);
@@ -218,6 +298,24 @@ export function CommodityResult({ data, accentColor }: CommodityResultProps) {
                     )}
                 </div>
             </div>
+
+            {/* ── Price Chart ── */}
+            {chartData.length > 0 && (
+                <StockChart
+                    data={chartData}
+                    symbol={`${data.name} (${data.commodity})`}
+                    range={chartRange}
+                    onRangeChange={setChartRange}
+                    loading={chartLoading}
+                    markers={chartMarkers}
+                    height={400}
+                    currencySymbol={curr}
+                    autoRefreshInterval={chartRefreshInterval}
+                    onRefresh={refreshChart}
+                    showIndicators={true}
+                    projections={chartProjections}
+                />
+            )}
 
             {/* ── Main Grid ── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

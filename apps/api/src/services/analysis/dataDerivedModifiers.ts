@@ -237,7 +237,7 @@ export async function getDerivedModifiers(): Promise<DerivedModifiersResult> {
         return result;
 
     } catch (error) {
-        logger.error('[DerivedModifiers] Error computing modifiers:', error);
+        logger.error({ err: error }, '[DerivedModifiers] Error computing modifiers');
         return {
             ready: false,
             modifiers: [],

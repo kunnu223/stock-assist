@@ -10,6 +10,7 @@ import { CommodityPrediction } from '../models';
 import { validate } from '../middleware/validate';
 import { commodityAnalyzeBody } from '../middleware/schemas';
 import { analysisLimiter } from '../middleware/rateLimiter';
+import { fetchHistory } from '../services/data/yahooHistory';
 import { logger } from '../config/logger';
 
 export const commodityRouter = Router();
@@ -98,6 +99,52 @@ commodityRouter.get('/accuracy', async (_req: Request, res: Response, next: Next
     } catch (error) {
         // Graceful degradation if no DB
         res.json({ success: true, stats: { total: 0, wins: 0, winRate: 0, open: 0, byCommodity: [] } });
+    }
+});
+
+/** GET /commodity/chart — Fetch OHLC chart data for a commodity */
+const VALID_CHART_RANGES = ['1mo', '3mo', '6mo', '1y', '2y'];
+
+commodityRouter.get('/chart', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const symbol = (req.query.symbol as string || '').trim().toUpperCase().replace(/\s+/g, '');
+        const range = (req.query.range as string || '3mo').trim();
+
+        if (!symbol || !COMMODITY_SYMBOLS[symbol]) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid commodity symbol. Supported: ${Object.keys(COMMODITY_SYMBOLS).join(', ')}`,
+            });
+        }
+
+        if (!VALID_CHART_RANGES.includes(range)) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid range. Valid: ${VALID_CHART_RANGES.join(', ')}`,
+            });
+        }
+
+        const yahooSymbol = COMMODITY_SYMBOLS[symbol].yahoo;
+        const interval = range === '1y' || range === '2y' ? '1wk' : '1d';
+
+        logger.info({ symbol, yahooSymbol, range, interval }, 'GET /commodity/chart');
+
+        const data = await fetchHistory(yahooSymbol, range, interval);
+
+        if (data.length === 0) {
+            return res.status(404).json({ success: false, error: `No chart data found for ${symbol}` });
+        }
+
+        return res.json({
+            success: true,
+            symbol,
+            name: COMMODITY_SYMBOLS[symbol].name,
+            data,
+            range,
+            interval,
+        });
+    } catch (error) {
+        next(error);
     }
 });
 

@@ -1,6 +1,13 @@
 'use client';
 
+/**
+ * Watchlist Context — Global state for user's watched symbols.
+ * Uses the centralized API service for all backend calls.
+ * @module @stock-assist/web/context/WatchlistContext
+ */
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { fetchWatchlist, addToWatchlist, removeFromWatchlist } from '@/services/api';
 
 interface WatchlistContextType {
     watchlist: string[];
@@ -15,12 +22,11 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
     const [watchlist, setWatchlist] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchWatchlist = useCallback(async () => {
+    const loadWatchlist = useCallback(async () => {
         try {
-            const res = await fetch('/api/watchlist');
-            const data = await res.json();
+            const data = await fetchWatchlist();
             if (data.success) {
-                setWatchlist(data.data.map((item: any) => item.symbol));
+                setWatchlist(data.data.map((item) => item.symbol));
             }
         } catch (err) {
             console.error('Failed to fetch watchlist:', err);
@@ -30,28 +36,22 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     useEffect(() => {
-        fetchWatchlist();
-    }, [fetchWatchlist]);
+        loadWatchlist();
+    }, [loadWatchlist]);
 
     const isFollowing = (symbol: string) => watchlist.includes(symbol.toUpperCase());
 
     const toggleFollow = async (symbol: string) => {
         const s = symbol.toUpperCase();
         const following = isFollowing(s);
-        const method = following ? 'DELETE' : 'POST';
-        const url = following ? `/api/watchlist/${s}` : '/api/watchlist';
 
         try {
-            const res = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: method === 'POST' ? JSON.stringify({ symbol: s }) : undefined
-            });
-
-            if (res.ok) {
-                setWatchlist(prev =>
-                    following ? prev.filter(item => item !== s) : [...prev, s]
-                );
+            if (following) {
+                await removeFromWatchlist(s);
+                setWatchlist((prev) => prev.filter((item) => item !== s));
+            } else {
+                await addToWatchlist(s);
+                setWatchlist((prev) => [...prev, s]);
             }
         } catch (err) {
             console.error('Watchlist update failed:', err);

@@ -77,10 +77,14 @@ export function buildDefaultBullishScenario(
             stopLoss: formatAmount(sr.support),
             stopLossPercent: formatPercent((stock.quote.price - sr.support) / stock.quote.price * 100),
             targets: [
-                { price: formatAmount(sr.resistance), probability: 70 },
-                { price: formatAmount(sr.resistance * 1.05), probability: 50 }
+                { price: formatAmount(sr.resistance), probability: Math.round(Math.min(85, 50 + bullishProb * 0.4)) },
+                { price: formatAmount(sr.resistance * 1.05), probability: Math.round(Math.max(20, bullishProb * 0.5)) }
             ],
-            riskReward: formatAmount(1.5),
+            riskReward: formatAmount(
+                (sr.resistance - stock.quote.price) > 0 && (stock.quote.price - sr.support) > 0
+                    ? (sr.resistance - stock.quote.price) / (stock.quote.price - sr.support)
+                    : 1.5
+            ),
             potentialProfit: [formatAmount(500), formatAmount(1500)]
         },
         factors: ['Technical setup', 'Volume confirmation'],
@@ -106,10 +110,14 @@ export function buildDefaultBearishScenario(
             stopLoss: formatAmount(sr.resistance),
             stopLossPercent: formatPercent((sr.resistance - stock.quote.price) / stock.quote.price * 100),
             targets: [
-                { price: formatAmount(sr.support), probability: 60 },
-                { price: formatAmount(sr.support * 0.95), probability: 40 }
+                { price: formatAmount(sr.support), probability: Math.round(Math.min(85, 50 + bearishProb * 0.4)) },
+                { price: formatAmount(sr.support * 0.95), probability: Math.round(Math.max(20, bearishProb * 0.5)) }
             ],
-            riskReward: formatAmount(1.2),
+            riskReward: formatAmount(
+                (stock.quote.price - sr.support) > 0 && (sr.resistance - stock.quote.price) > 0
+                    ? (stock.quote.price - sr.support) / (sr.resistance - stock.quote.price)
+                    : 1.2
+            ),
             potentialProfit: [formatAmount(200), formatAmount(800)]
         },
         factors: ['Downside risk', 'Support breakdown'],

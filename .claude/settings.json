@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/Asus/.claude/projects/d--Stock-Assist/**)"
+      "Read(//c/Users/Asus/.claude/projects/d--Stock-Assist/**)",
+      "Bash(npx kill-port:*)",
+      "Bash(taskkill //F //FI \"WINDOWTITLE eq npm*\")",
+      "Bash(npm run:*)",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(npm install:*)",
+      "Bash(node -e \"const lc = require\\(''''lightweight-charts''''\\); const keys = Object.keys\\(lc\\).filter\\(k => !k.startsWith\\(''''_''''\\)\\); console.log\\(keys.join\\(''''\\\\n''''\\)\\)\")",
+      "Bash(node -e \"const lc = require\\(''''lightweight-charts''''\\); console.log\\(Object.keys\\(lc\\).join\\(''''\\\\n''''\\)\\)\")",
+      "Bash(npx next:*)"
     ]
   }
 }

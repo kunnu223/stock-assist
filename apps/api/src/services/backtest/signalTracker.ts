@@ -194,7 +194,7 @@ export async function saveSignal(context: SignalContext): Promise<void> {
         await SignalRecord.create(signalData);
         logger.info(`[SignalTracker] Saved signal for ${context.symbol} (hash: ${hash}, regime: ${context.regime}, align: ${alignmentBucket}, adx: ${adxBucket}, vol: ${volumeBucket})`);
     } catch (error) {
-        logger.error(`[SignalTracker] Failed to save signal for ${context.symbol}:`, error);
+        logger.error({ err: error }, `[SignalTracker] Failed to save signal for ${context.symbol}`);
     }
 }
 
@@ -294,7 +294,7 @@ export async function updateSignalOutcomes(symbol: string, history: OHLCData[]):
         }
         return updated;
     } catch (error) {
-        logger.error(`[SignalTracker] Error updating outcomes for ${symbol}:`, error);
+        logger.error({ err: error }, `[SignalTracker] Error updating outcomes for ${symbol}`);
         return 0;
     }
 }
@@ -353,7 +353,7 @@ export async function getConditionWinRates(filters?: ConditionFilter): Promise<W
             sampleSize: r.total,
         }));
     } catch (error) {
-        logger.error('[SignalTracker] Error fetching condition win rates:', error);
+        logger.error({ err: error }, '[SignalTracker] Error fetching condition win rates');
         return [];
     }
 }
@@ -528,7 +528,7 @@ export async function getEmpiricalProbability(
                 : `Low reliability (${sampleSize}/${MIN_SAMPLES_FOR_EMPIRICAL} samples). Win rate ${winRate}%${reliabilityNote}. Expectancy[${expectancyMethod}]: ${expectancy.toFixed(3)}%`,
         };
     } catch (error) {
-        logger.error(`[SignalTracker] Error fetching empirical probability for ${conditionLabel}:`, error);
+        logger.error({ err: error }, `[SignalTracker] Error fetching empirical probability for ${conditionLabel}`);
         return {
             available: false,
             conditionHash: hash,
@@ -646,7 +646,7 @@ export async function getSignalStats(): Promise<{
             ready: resolved >= 300,
         };
     } catch (error) {
-        logger.error('[SignalTracker] Error fetching stats:', error);
+        logger.error({ err: error }, '[SignalTracker] Error fetching stats');
         return {
             total: 0,
             resolved: 0,

@@ -46,15 +46,15 @@ export interface SelectivityGate {
     totalGates: number;
 }
 
-// Configurable thresholds
+// Configurable thresholds — v6: tightened for higher trade quality
 const THRESHOLDS = {
-    minADX: 18,                     // Phase E #11: lowered from 22 to 18 (with rising requirement)
-    adxRisingCandles: 3,            // Phase E #11: ADX must be rising for 3 candles
-    minAlignment: 65,
-    minVolume: 1.2,
-    maxFTConflict: 'medium' as const,
+    minADX: 20,                     // v6: raised from 18 — reject choppy markets
+    adxRisingCandles: 3,            // ADX must be rising for 3 candles
+    minAlignment: 70,               // v6: raised from 65 — require stronger multi-TF agreement
+    minVolume: 1.3,                 // v6: raised from 1.2 — reject low-conviction moves
+    maxFTConflict: 'low' as const,  // v6: tightened from 'medium' — reject even moderate conflicts
     earningsWindow: 3,
-    maxVwapExtension: 1.05, // Reject if price is > 5% above weekly VWAP
+    maxVwapExtension: 1.04,         // v6: tightened from 1.05 — reduce chasing risk
 };
 
 const CONFLICT_SEVERITY_ORDER = ['none', 'low', 'medium', 'high'];

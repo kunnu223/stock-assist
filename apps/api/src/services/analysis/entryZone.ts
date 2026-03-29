@@ -18,13 +18,17 @@ import type {
     FairValueGap,
     LiquiditySweep,
 } from '@stock-assist/shared';
+import { calculateRoundTripCostPercent } from '@stock-assist/shared';
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════
 
-/** Minimum Risk:Reward ratio required for a valid signal */
+/** Minimum GROSS Risk:Reward ratio required for a valid signal */
 const MIN_RISK_REWARD = 2.0;
+
+/** Minimum NET Risk:Reward (after transaction costs) for a valid signal */
+const MIN_NET_RISK_REWARD = 1.5;
 
 /** ATR multiplier for stop loss buffer beyond OB edge */
 const SL_ATR_BUFFER = 0.5;
@@ -96,7 +100,7 @@ export function calculateEntryZone(
     const target1 = calculateTarget1(smc, entryMid, atr, direction);
     const target2 = calculateTarget2(entryMid, atr, direction);
 
-    // Calculate Risk:Reward
+    // Calculate Risk:Reward (gross)
     const risk = direction === 'bullish'
         ? entryMid - stopLoss
         : stopLoss - entryMid;
@@ -105,7 +109,19 @@ export function calculateEntryZone(
         : entryMid - target1;
 
     const riskReward = risk > 0 ? Number((reward / risk).toFixed(2)) : 0;
-    const isValid = riskReward >= MIN_RISK_REWARD;
+
+    // Net R:R after transaction costs
+    const costPercent = calculateRoundTripCostPercent();
+    const grossRewardPercent = (reward / entryMid) * 100;
+    const grossRiskPercent = (risk / entryMid) * 100;
+    const netReward = grossRewardPercent - costPercent;
+    const netRisk = grossRiskPercent + costPercent;
+    const netRiskReward = netReward > 0 && netRisk > 0
+        ? Number((netReward / netRisk).toFixed(2))
+        : 0;
+
+    // Valid only if BOTH gross R:R AND net R:R pass their thresholds
+    const isValid = riskReward >= MIN_RISK_REWARD && netRiskReward >= MIN_NET_RISK_REWARD;
 
     return {
         entryZoneLow: Number(entryZoneLow.toFixed(2)),

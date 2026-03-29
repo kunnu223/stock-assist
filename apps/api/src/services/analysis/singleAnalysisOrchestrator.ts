@@ -34,6 +34,107 @@ import { generateFallbackAnalysis, buildDefaultBullishScenario, buildDefaultBear
 // ═══════════════════════════════════════════════════════════════
 
 /**
+ * Sanitize AI-returned scenario (bullish/bearish) trade plan values.
+ * AI models often return nonsensical values like stopLoss=100 (flat number)
+ * or hardcoded target probabilities (60%/30%). This function validates and
+ * replaces bad values with system-calculated ones from S/R levels and ATR.
+ */
+function sanitizeScenario(
+    scenario: Record<string, any>,
+    type: 'bullish' | 'bearish',
+    currentPrice: number,
+    sr: { support: number; resistance: number; s1: number; r1: number },
+    atr: number,
+    probability: number,
+    adjustedConfidence: number,
+): Record<string, any> {
+    if (!scenario || !scenario.tradePlan) return scenario;
+
+    const plan = { ...scenario.tradePlan };
+    const priceFloor = currentPrice * 0.70; // 30% below — any SL below this is nonsense
+    const priceCeil = currentPrice * 1.30;  // 30% above
+
+    // ── Stop Loss validation ──
+    const rawSL = typeof plan.stopLoss === 'string' ? parseFloat(plan.stopLoss) : plan.stopLoss;
+    const slIsInvalid = !rawSL || isNaN(rawSL) || rawSL < priceFloor || rawSL > priceCeil
+        || (type === 'bullish' && rawSL >= currentPrice)   // Bullish SL must be below price
+        || (type === 'bearish' && rawSL <= currentPrice);  // Bearish SL must be above price
+
+    if (slIsInvalid) {
+        if (type === 'bullish') {
+            // SL at support - 0.5×ATR buffer
+            plan.stopLoss = Number((sr.support - atr * 0.5).toFixed(2));
+        } else {
+            // SL at resistance + 0.5×ATR buffer
+            plan.stopLoss = Number((sr.resistance + atr * 0.5).toFixed(2));
+        }
+        plan.stopLossPercent = Number((Math.abs(currentPrice - plan.stopLoss) / currentPrice * 100).toFixed(1));
+    }
+
+    // ── Entry validation ──
+    if (plan.entry) {
+        const entries = Array.isArray(plan.entry) ? plan.entry : [plan.entry];
+        const validEntries = entries.map((e: any) => {
+            const val = typeof e === 'string' ? parseFloat(e) : e;
+            if (!val || isNaN(val) || val < priceFloor || val > priceCeil) return currentPrice;
+            return val;
+        });
+        plan.entry = validEntries;
+    }
+
+    // ── Target validation & dynamic probabilities ──
+    if (plan.targets && Array.isArray(plan.targets)) {
+        // Validate target prices are within reasonable range
+        plan.targets = plan.targets.map((t: any, idx: number) => {
+            const price = typeof t.price === 'string' ? parseFloat(t.price) : t.price;
+            let validPrice = price;
+
+            if (!price || isNaN(price) || price < priceFloor || price > priceCeil) {
+                // Replace with system-calculated targets
+                if (type === 'bullish') {
+                    validPrice = idx === 0 ? sr.resistance : sr.r1 || sr.resistance * 1.05;
+                } else {
+                    validPrice = idx === 0 ? sr.support : sr.s1 || sr.support * 0.95;
+                }
+            }
+
+            return { ...t, price: Number(validPrice.toFixed(2)) };
+        });
+
+        // Dynamic target probabilities based on system confidence + direction
+        // Higher confidence = higher T1 probability, lower T2 (more decisive)
+        // Direction alignment affects the spread
+        const confFactor = adjustedConfidence / 100; // 0.0–1.0
+        if (type === 'bullish') {
+            const t1Prob = Math.round(Math.min(85, 50 + probability * 0.4 + confFactor * 10));
+            const t2Prob = Math.round(Math.max(15, t1Prob - 25 - (1 - confFactor) * 10));
+            plan.targets = plan.targets.map((t: any, idx: number) => ({
+                ...t,
+                probability: idx === 0 ? t1Prob : t2Prob,
+            }));
+        } else {
+            const t1Prob = Math.round(Math.min(85, 50 + probability * 0.4 + confFactor * 10));
+            const t2Prob = Math.round(Math.max(15, t1Prob - 25 - (1 - confFactor) * 10));
+            plan.targets = plan.targets.map((t: any, idx: number) => ({
+                ...t,
+                probability: idx === 0 ? t1Prob : t2Prob,
+            }));
+        }
+    }
+
+    // ── Risk:Reward recalculation ──
+    const slValue = typeof plan.stopLoss === 'string' ? parseFloat(plan.stopLoss) : plan.stopLoss;
+    if (plan.targets && plan.targets.length > 0 && slValue) {
+        const t1Price = typeof plan.targets[0].price === 'string' ? parseFloat(plan.targets[0].price) : plan.targets[0].price;
+        const risk = Math.abs(currentPrice - slValue);
+        const reward = Math.abs(t1Price - currentPrice);
+        plan.riskReward = risk > 0 ? Number((reward / risk).toFixed(2)) : 0;
+    }
+
+    return { ...scenario, tradePlan: plan };
+}
+
+/**
  * Determine final recommendation. System direction model takes priority —
  * it uses weighted technical signals. AI recommendation is only used when
  * the system says HOLD (uncertain) and the AI has a clear directional call.
@@ -314,7 +415,7 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
     // Breaking news override
     let breakingNewsOverride = false;
     if (enhancedNews.breakingImpact === 'HIGH' && enhancedNews.breakingNews.length > 0) {
-        const negativeBreaking = enhancedNews.breakingNews.some((n: Record<string, unknown>) => n.sentiment === 'negative');
+        const negativeBreaking = enhancedNews.breakingNews.some((n: any) => n.sentiment === 'negative');
         if (negativeBreaking) {
             breakingNewsOverride = true;
             logger.warn({ symbol }, 'Breaking negative news detected — capping bullish probability');
@@ -622,21 +723,27 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
             validUntil: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
             confidenceBreakdown: confidenceResult.breakdown,
             bias: aiAnalysis.bias || (confidenceResult.recommendation === 'BUY' ? 'BULLISH' : confidenceResult.recommendation === 'SELL' ? 'BEARISH' : 'NEUTRAL'),
-            confidence: adjustedConfidence > 70 ? 'HIGH' : adjustedConfidence > 50 ? 'MEDIUM' : 'LOW',
-            category: adjustedConfidence >= 60 && (confidenceResult.recommendation === 'BUY' || confidenceResult.recommendation === 'SELL')
+            confidence: adjustedConfidence > 75 ? 'HIGH' : adjustedConfidence > 55 ? 'MEDIUM' : 'LOW',
+            category: adjustedConfidence >= 65 && (confidenceResult.recommendation === 'BUY' || confidenceResult.recommendation === 'SELL')
                 ? 'STRONG_SETUP'
-                : adjustedConfidence < 35
+                : adjustedConfidence < 40
                     ? 'AVOID'
                     : 'NEUTRAL',
-            // v5.1: Always use system-calculated probabilities (from direction model)
-            // AI ensemble provides scenarios (entry, targets, reasoning) but its probability
-            // can contradict technical direction — e.g., AI says 62% bullish while chart is 88% bearish-aligned.
-            // Fix: use AI scenario structure but override probability with system-calculated values.
+            // v6: Sanitize AI scenarios — override probability AND validate trade plan values.
+            // AI models return nonsensical values (e.g., stopLoss=100, hardcoded 60%/30% targets).
+            // sanitizeScenario() validates SL is a real price level, recalculates target probabilities
+            // from system direction model, and falls back to S/R levels when AI values are clearly wrong.
             bullish: aiAnalysis.bullish
-                ? { ...aiAnalysis.bullish, probability: bullishProb }
+                ? sanitizeScenario(
+                    { ...aiAnalysis.bullish, probability: bullishProb },
+                    'bullish', stock.quote.price, sr, atrCurrent, bullishProb, adjustedConfidence
+                )
                 : defaultBullish,
             bearish: aiAnalysis.bearish
-                ? { ...aiAnalysis.bearish, probability: bearishProb }
+                ? sanitizeScenario(
+                    { ...aiAnalysis.bearish, probability: bearishProb },
+                    'bearish', stock.quote.price, sr, atrCurrent, bearishProb, adjustedConfidence
+                )
                 : defaultBearish,
 
             riskMetrics: {
@@ -666,28 +773,27 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
         }
     }
 
-    // Trade selectivity override — v5.1: convergence bypass
-    // If pattern + multi-TF alignment agree strongly, allow the trade through with a warning
-    // even if ADX/volume gates fail (these are common in early-stage moves)
-    const hasConvergence = patternConfluence.score >= 60 && confidenceResult.direction.conviction >= 40;
+    // Trade selectivity override — v6: tightened convergence bypass
+    // Only allow bypass when confluence is VERY strong AND confidence is high
+    const hasConvergence = patternConfluence.score >= 75 && confidenceResult.direction.conviction >= 55;
 
     if (!selectivity.passed && (analysis.recommendation === 'BUY' || analysis.recommendation === 'SELL')) {
         const failedGates = selectivity.totalGates - selectivity.passedCount;
 
-        if (hasConvergence && adjustedConfidence >= 50) {
-            // v5.1: Convergence bypass — pattern + TF alignment overrides gate failures
+        if (hasConvergence && adjustedConfidence >= 65) {
+            // v6: Convergence bypass — only with very strong pattern + TF alignment + high confidence
             logger.info({ symbol, reason: selectivity.reason, failedGates, confluence: patternConfluence.score, conviction: confidenceResult.direction.conviction },
-                'Selectivity bypassed — convergence override');
+                'Selectivity bypassed — strong convergence override');
             analysis.reasoning = analysis.reasoning +
                 ` ℹ️ Selectivity gates (${failedGates}) bypassed due to strong pattern confluence (${patternConfluence.score}/100).`;
-        } else if (failedGates >= 4) {
-            // Too many failures even with softening → reject to HOLD
+        } else if (failedGates >= 3) {
+            // v6: lowered from 4 to 3 — reject to HOLD sooner
             logger.info({ symbol, reason: selectivity.reason, failedGates }, 'Selectivity rejected — downgrading to HOLD');
             analysis.recommendation = 'HOLD';
             analysis.category = 'NEUTRAL';
             analysis.reasoning = analysis.reasoning +
                 ` ⚠️ Trade rejected by selectivity filter (${failedGates} gates failed): ${selectivity.reason}`;
-        } else if (adjustedConfidence >= 50) {
+        } else if (adjustedConfidence >= 60) {
             // 1-3 failures with decent confidence → warn only
             logger.info({ symbol, reason: selectivity.reason, failedGates }, 'Selectivity warning — keeping recommendation');
             analysis.reasoning = analysis.reasoning +

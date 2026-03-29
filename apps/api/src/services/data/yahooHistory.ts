@@ -71,6 +71,7 @@ export const fetchHistory = async (
             case '3mo': period1 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000); break;
             case '6mo': period1 = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000); break;
             case '1y': period1 = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); break;
+            case '2y': period1 = new Date(now.getTime() - 730 * 24 * 60 * 60 * 1000); break;
             default: period1 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Default 1mo
         }
 
@@ -93,7 +94,7 @@ export const fetchHistory = async (
             volume: q.volume || 0,
         })).filter((d: any) => d.date && d.close > 0);
     } catch (error) {
-        logger.warn(`⚠️ Yahoo History Fetch Failed for ${symbol} (${interval}):`, (error as Error).message);
+        logger.warn({ err: error }, `Yahoo History Fetch Failed for ${symbol} (${interval})`);
         return [];
     }
 };

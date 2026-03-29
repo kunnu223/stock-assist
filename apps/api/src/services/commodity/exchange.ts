@@ -131,7 +131,7 @@ export async function fetchUSDINR(): Promise<number> {
             return rate;
         }
     } catch (err) {
-        logger.warn(`[Exchange] ⚠️ Failed to fetch USDINR:`, (err as Error).message);
+        logger.warn({ err }, `[Exchange] Failed to fetch USDINR`);
     }
 
     // Fallback rate

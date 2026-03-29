@@ -6,6 +6,7 @@
  */
 
 import type { OHLCData, TechnicalIndicators } from '@stock-assist/shared';
+import { calculateRoundTripCostPercent } from '@stock-assist/shared';
 
 export interface RiskMetrics {
     expectedReturn: number;       // % expected return based on ATR targets
@@ -68,19 +69,24 @@ export function calculateRiskMetrics(
         35 + (adjustedConfidence * 0.5)
     ));
 
-    // 5. ATR-based Expected Return
+    // 5. ATR-based Expected Return (with transaction costs)
     const atr = indicators.atr;
     const currentPrice = data[data.length - 1].close;
+    const roundTripCost = calculateRoundTripCostPercent();
 
     // Target = 2x ATR gain, Stop = 1x ATR loss
     const avgGainPercent = (atr * 2 / currentPrice) * 100;
     const avgLossPercent = (atr / currentPrice) * 100;
 
-    // Expected Return = (Win% × AvgGain) − (Loss% × AvgLoss)
-    const expectedReturn = (winRate / 100 * avgGainPercent) - ((1 - winRate / 100) * avgLossPercent);
+    // Net gain/loss after transaction costs
+    const netGainPercent = avgGainPercent - roundTripCost;
+    const netLossPercent = avgLossPercent + roundTripCost;
 
-    // 6. Risk-Reward Ratio
-    const riskRewardRatio = avgLossPercent > 0 ? avgGainPercent / avgLossPercent : 0;
+    // Expected Return = (Win% × NetGain) − (Loss% × NetLoss)
+    const expectedReturn = (winRate / 100 * netGainPercent) - ((1 - winRate / 100) * netLossPercent);
+
+    // 6. Risk-Reward Ratio (net of costs)
+    const riskRewardRatio = netLossPercent > 0 ? netGainPercent / netLossPercent : 0;
 
     // 7. Sharpe Ratio (annualized)
     // Using expected return vs risk-free rate (7% for India)

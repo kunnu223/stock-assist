@@ -1,102 +1,76 @@
 'use client';
 
-import { useState } from 'react';
-import { Activity, BarChart2, Globe, Zap, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, MoreHorizontal, Star, Copy, Check, Shield, Target, Crosshair } from 'lucide-react';
-import { useWatchlist } from '@/context/WatchlistContext';
+/**
+ * AnalysisDetail — Main analysis display component.
+ * Shows executive summary, chart, signal card, scenarios, indicators, and risks.
+ * @module @stock-assist/web/components/analysis/AnalysisDetail
+ */
 
-// Shared types (simplified for component usage)
-export interface AnalysisData {
-    stock: string;
-    currentPrice: number;
-    recommendation: 'BUY' | 'SELL' | 'HOLD' | 'WAIT';
-    confidenceScore: number;
-    timeframe: string;
-    technicalPatterns: {
-        '1D': string[];
-        '1W': string[];
-        '1M': string[];
-        alignment: string;
-    };
-    indicators: {
-        RSI: number;
-        RSIInterpretation: string;
-        MACD: string;
-        volumeTrend: string;
-        bollingerPosition: string;
-    };
-    news: {
-        sentiment: string;
-        sentimentScore: number;
-        latestHeadlines: string[];
-        impactLevel: string;
-    };
-    fundamentals: {
-        valuation: string;
-        growth: string;
-        peRatio: number | null;
-    };
-    candlestickPatterns: string[];
-    candlestickAnalysis?: {
-        patterns: Array<{
-            name: string;
-            type: 'bullish' | 'bearish' | 'neutral';
-            strength: 'weak' | 'moderate' | 'strong';
-            confidenceWeight: number;
-            description: string;
-            candles: number;
-        }>;
-        bullishCount: number;
-        bearishCount: number;
-        dominantBias: 'bullish' | 'bearish' | 'neutral';
-        compositeScore: number;
-        summary: string;
-    };
-    confidenceBreakdown: {
-        patternStrength: number;
-        newsSentiment: number;
-        technicalAlignment: number;
-        volumeConfirmation: number;
-        fundamentalStrength: number;
-    };
-    bullish: any;
-    bearish: any;
-    risks: string[];
-    category: string;
-    bias: string;
-    confidence: string;
-    rawPrompt?: string;
-    signalCard?: {
-        ticker: string;
-        direction: 'bullish' | 'bearish' | 'none';
-        status: 'SETUP_ACTIVE' | 'WAITING_FOR_ENTRY' | 'NO_SETUP';
-        convictionScore: number;
-        entryZone: {
-            entryZoneLow: number;
-            entryZoneHigh: number;
-            stopLoss: number;
-            target1: number;
-            target2: number;
-            riskReward: number;
-            isValid: boolean;
-            entryTrigger: string;
-        } | null;
-        explanation: string[];
-        mtfAlignment: {
-            weeklyTrend: string;
-            dailySetup: string;
-            alignmentScore: number;
-            alignmentValid: boolean;
-        };
-        smcSummary: {
-            trendState: string;
-            orderBlockCount: number;
-            unmitigatedOBCount: number;
-            unfilledFVGCount: number;
-            chochDetected: boolean;
-            sweepDetected: boolean;
-        };
-    };
+import { useState, useMemo } from 'react';
+import {
+    Activity, BarChart2, Globe, Zap, TrendingUp, TrendingDown,
+    AlertCircle, CheckCircle2, MoreHorizontal, Star, Copy, Check,
+    Shield, Target, Crosshair,
+} from 'lucide-react';
+import { useWatchlist } from '@/context/WatchlistContext';
+import { useChartData } from '@/hooks/useChartData';
+import { StockChart } from '@/components/chart/StockChart';
+import { CONFIDENCE, RECOMMENDATION_STYLES, CHART_COLORS } from '@/constants';
+import type { AnalysisData, ChartMarker, PriceProjection } from '@/types';
+
+// Re-export for backward compatibility
+export type { AnalysisData } from '@/types';
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function getConfidenceColor(score: number): string {
+    if (score >= CONFIDENCE.HIGH) return 'text-emerald-500';
+    if (score >= CONFIDENCE.MEDIUM) return 'text-amber-500';
+    return 'text-rose-500';
 }
+
+function getSignalStyle(signal: string): string {
+    return RECOMMENDATION_STYLES[signal as keyof typeof RECOMMENDATION_STYLES] || 'bg-zinc-700 text-zinc-300';
+}
+
+/** Build chart price level markers from analysis data */
+function buildChartMarkers(data: AnalysisData): ChartMarker[] {
+    const markers: ChartMarker[] = [];
+
+    // Entry zone from signal card
+    if (data.signalCard?.entryZone) {
+        const ez = data.signalCard.entryZone;
+        markers.push(
+            { price: ez.entryZoneLow, label: 'Entry', color: CHART_COLORS.ENTRY_ZONE, lineStyle: 'dashed' },
+            { price: ez.entryZoneHigh, label: '', color: CHART_COLORS.ENTRY_ZONE, lineStyle: 'dashed' },
+            { price: ez.stopLoss, label: 'SL', color: CHART_COLORS.STOP_LOSS, lineStyle: 'solid' },
+            { price: ez.target1, label: 'T1', color: CHART_COLORS.TARGET_1, lineStyle: 'dashed' },
+            { price: ez.target2, label: 'T2', color: CHART_COLORS.TARGET_2, lineStyle: 'dashed' },
+        );
+    }
+
+    // Price targets from analysis
+    if (data.priceTargets) {
+        const pt = data.priceTargets;
+        if (pt.stopLoss && !data.signalCard?.entryZone) {
+            markers.push({ price: pt.stopLoss, label: 'SL', color: CHART_COLORS.STOP_LOSS, lineStyle: 'solid' });
+        }
+        if (pt.target1 && !data.signalCard?.entryZone) {
+            markers.push({ price: pt.target1, label: 'T1', color: CHART_COLORS.TARGET_1, lineStyle: 'dashed' });
+        }
+        if (pt.target2 && !data.signalCard?.entryZone) {
+            markers.push({ price: pt.target2, label: 'T2', color: CHART_COLORS.TARGET_2, lineStyle: 'dashed' });
+        }
+    }
+
+    return markers;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════
 
 interface AnalysisDetailProps {
     data: AnalysisData;
@@ -107,21 +81,61 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
     const followed = isFollowing(data.stock);
     const [copied, setCopied] = useState(false);
 
+    // Chart data hook
+    const { data: chartData, range, setRange, isLoading: chartLoading } = useChartData({
+        symbol: data.stock,
+        enabled: !!data.stock,
+    });
 
-    const getConfidenceColor = (score: number) => {
-        if (score >= 70) return 'text-emerald-500';
-        if (score >= 50) return 'text-amber-500';
-        return 'text-rose-500';
-    };
+    // Memoize chart markers to avoid recalculating on every render
+    const chartMarkers = useMemo(() => buildChartMarkers(data), [data]);
 
-    const getSignalStyle = (signal: string) => {
-        switch (signal) {
-            case 'BUY': return 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20';
-            case 'SELL': return 'bg-rose-500 text-white shadow-lg shadow-rose-500/20';
-            case 'HOLD': return 'bg-amber-500 text-white shadow-lg shadow-amber-500/20';
-            default: return 'bg-zinc-700 text-zinc-300';
+    // Build future price projections from bullish/bearish scenarios
+    const chartProjections = useMemo((): PriceProjection[] => {
+        const projections: PriceProjection[] = [];
+        if (!data.currentPrice) return projections;
+
+        // Parse time horizon to days (e.g., "1-2 weeks" → 10, "3-5 days" → 4)
+        const parseDays = (horizon: string): number => {
+            const lower = (horizon || '').toLowerCase();
+            const nums = lower.match(/\d+/g);
+            if (!nums) return 10;
+            const avg = nums.reduce((a, b) => a + Number(b), 0) / nums.length;
+            if (lower.includes('week')) return Math.round(avg * 5);
+            if (lower.includes('month')) return Math.round(avg * 22);
+            return Math.round(avg); // days
+        };
+
+        // Bullish scenario
+        if (data.bullish?.tradePlan?.targets?.length > 0) {
+            const t1 = Number(data.bullish.tradePlan.targets[0]?.price || 0);
+            if (t1 > 0) {
+                projections.push({
+                    label: 'Bull Target',
+                    targetPrice: t1,
+                    probability: data.bullish.probability || 50,
+                    type: 'bullish',
+                    daysAhead: parseDays(data.bullish.timeHorizon),
+                });
+            }
         }
-    };
+
+        // Bearish scenario
+        if (data.bearish?.tradePlan?.targets?.length > 0) {
+            const t1 = Number(data.bearish.tradePlan.targets[0]?.price || 0);
+            if (t1 > 0) {
+                projections.push({
+                    label: 'Bear Target',
+                    targetPrice: t1,
+                    probability: data.bearish.probability || 50,
+                    type: 'bearish',
+                    daysAhead: parseDays(data.bearish.timeHorizon),
+                });
+            }
+        }
+
+        return projections;
+    }, [data]);
 
     return (
         <div className="space-y-6 max-w-6xl mx-auto">
@@ -172,6 +186,27 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
                 </div>
             </div>
 
+            {/* Price Chart */}
+            {chartData.length > 0 && (
+                <StockChart
+                    data={chartData}
+                    symbol={data.stock}
+                    range={range}
+                    onRangeChange={setRange}
+                    loading={chartLoading}
+                    markers={chartMarkers}
+                    projections={chartProjections}
+                />
+            )}
+            {chartLoading && chartData.length === 0 && (
+                <div className="border border-border rounded-xl bg-zinc-950 flex items-center justify-center" style={{ height: 420 }}>
+                    <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Loading chart...</span>
+                    </div>
+                </div>
+            )}
+
             {/* Strategic Scenarios */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ScenarioPanel title="BULLISH THESIS" scenario={data.bullish} type="bullish" active={data.recommendation === 'BUY'} />
@@ -187,7 +222,7 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
                         <DataRow label="MACD" value={data.indicators.MACD} statusIndicator />
                         <DataRow label="Bollinger" value={data.indicators.bollingerPosition.replace('_', ' ')} />
                         <div className="pt-2">
-                            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest mb-2">🕯️ Candlestick Patterns</p>
+                            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest mb-2">Candlestick Patterns</p>
                             {data.candlestickAnalysis && data.candlestickAnalysis.patterns.length > 0 ? (
                                 <>
                                     <div className="flex flex-wrap gap-2 mb-3">
@@ -195,18 +230,18 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
                                             <span
                                                 key={i}
                                                 title={p.description}
-                                                className={`px-2 py-1 text-[10px] font-bold rounded border uppercase cursor-help transition-colors ${p.type === 'bullish'
-                                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                                    : p.type === 'bearish'
-                                                        ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                                                        : 'bg-zinc-800 text-zinc-300 border-zinc-700'
-                                                    }`}
+                                                className={`px-2 py-1 text-[10px] font-bold rounded border uppercase cursor-help transition-colors ${
+                                                    p.type === 'bullish'
+                                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                        : p.type === 'bearish'
+                                                            ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                                            : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                                                }`}
                                             >
                                                 {p.name} · {p.strength}
                                             </span>
                                         ))}
                                     </div>
-                                    {/* Composite score bar */}
                                     {(data.candlestickAnalysis.bullishCount > 0 || data.candlestickAnalysis.bearishCount > 0) && (
                                         <div className="mb-2">
                                             <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800">
@@ -259,15 +294,16 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
                                 <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Sentiment</p>
-                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${data.news.sentiment === 'positive' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
-                                    }`}>
+                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                                    data.news.sentiment === 'positive' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+                                }`}>
                                     {data.news.sentiment} ({data.news.sentimentScore}%)
                                 </span>
                             </div>
                             <div className="space-y-2">
                                 {data.news.latestHeadlines.slice(0, 2).map((h, i) => (
                                     <p key={i} className="text-[10px] text-muted-foreground italic line-clamp-2 border-l border-zinc-800 pl-3 leading-relaxed">
-                                        "{h}"
+                                        &quot;{h}&quot;
                                     </p>
                                 ))}
                             </div>
@@ -321,21 +357,16 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
                                 setCopied(true);
                                 setTimeout(() => setCopied(false), 2000);
                             }}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs tracking-wide transition-all active:scale-95 ${copied
-                                ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'
-                                : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-600/20'
-                                }`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs tracking-wide transition-all active:scale-95 ${
+                                copied
+                                    ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'
+                                    : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-600/20'
+                            }`}
                         >
                             {copied ? (
-                                <>
-                                    <Check size={14} />
-                                    <span>COPIED!</span>
-                                </>
+                                <><Check size={14} /><span>COPIED!</span></>
                             ) : (
-                                <>
-                                    <Copy size={14} />
-                                    <span>COPY PROMPT</span>
-                                </>
+                                <><Copy size={14} /><span>COPY PROMPT</span></>
                             )}
                         </button>
                     </div>
@@ -346,7 +377,7 @@ export function AnalysisDetail({ data }: AnalysisDetailProps) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Phase 1: Pre-Move Signal Card Component
+// SIGNAL CARD COMPONENT
 // ═══════════════════════════════════════════════════════════════
 
 function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCard']> }) {
@@ -357,17 +388,17 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
 
     const statusConfig = {
         SETUP_ACTIVE: {
-            label: '✅ SETUP ACTIVE',
+            label: 'SETUP ACTIVE',
             className: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400',
             pulse: true,
         },
         WAITING_FOR_ENTRY: {
-            label: '⏳ WAITING FOR ENTRY',
+            label: 'WAITING FOR ENTRY',
             className: 'bg-amber-500/15 border-amber-500/30 text-amber-400',
             pulse: false,
         },
         NO_SETUP: {
-            label: '❌ NO SETUP',
+            label: 'NO SETUP',
             className: 'bg-zinc-800/50 border-zinc-700/30 text-zinc-500',
             pulse: false,
         },
@@ -381,7 +412,6 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
             ? 'bg-amber-500'
             : 'bg-zinc-600';
 
-    // Static class maps — Tailwind JIT can't detect dynamic `border-${var}-500` patterns
     const cardBorderClass = isActive
         ? (isBullish
             ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.03] to-zinc-950'
@@ -401,19 +431,17 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
             {/* Header */}
             <div className={`px-5 py-4 flex items-center justify-between border-b ${headerBorderClass}`}>
                 <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isNoSetup
-                            ? 'bg-zinc-800/60 text-zinc-500'
-                            : isBullish
-                                ? 'bg-emerald-500/15 text-emerald-400'
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                        isNoSetup ? 'bg-zinc-800/60 text-zinc-500'
+                            : isBullish ? 'bg-emerald-500/15 text-emerald-400'
                                 : 'bg-rose-500/15 text-rose-400'
-                        }`}>
+                    }`}>
                         {isNoSetup ? <Shield size={18} /> : isBullish ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
                             <h3 className="text-xs font-black text-foreground uppercase tracking-widest">Pre-Move Signal</h3>
-                            <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${status.className} ${status.pulse ? 'animate-pulse' : ''
-                                }`}>
+                            <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${status.className} ${status.pulse ? 'animate-pulse' : ''}`}>
                                 {status.label}
                             </span>
                         </div>
@@ -423,12 +451,12 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
                     </div>
                 </div>
 
-                {/* Direction Badge */}
                 {card.direction !== 'none' && (
-                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${isBullish
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${
+                        isBullish
                             ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                             : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                        }`}>
+                    }`}>
                         {card.direction}
                     </span>
                 )}
@@ -440,10 +468,11 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
                 <div className="mb-5">
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-[9px] text-muted-foreground uppercase font-black tracking-widest">Conviction Score</span>
-                        <span className={`text-lg font-black ${card.convictionScore >= 70 ? 'text-emerald-400'
+                        <span className={`text-lg font-black ${
+                            card.convictionScore >= 70 ? 'text-emerald-400'
                                 : card.convictionScore >= 55 ? 'text-amber-400'
                                     : 'text-zinc-500'
-                            }`}>
+                        }`}>
                             {card.convictionScore}<span className="text-xs text-muted-foreground font-normal">/100</span>
                         </span>
                     </div>
@@ -455,7 +484,7 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
                     </div>
                 </div>
 
-                {/* Trade Levels Grid — only show for active/waiting setups */}
+                {/* Trade Levels Grid */}
                 {card.entryZone && !isNoSetup && (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
                         <div className="p-3 bg-zinc-900/60 border border-zinc-800/50 rounded-lg">
@@ -509,17 +538,15 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
                     </div>
                 )}
 
-                {/* Why This Setup — explanation bullets */}
+                {/* Why This Setup */}
                 {card.explanation.length > 0 && (
-                    <div className={`p-4 rounded-lg border ${isNoSetup ? 'bg-zinc-900/20 border-zinc-800/30' : 'bg-zinc-900/40 border-zinc-800/40'
-                        }`}>
+                    <div className={`p-4 rounded-lg border ${isNoSetup ? 'bg-zinc-900/20 border-zinc-800/30' : 'bg-zinc-900/40 border-zinc-800/40'}`}>
                         <p className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mb-3">
                             {isNoSetup ? 'Why No Setup' : 'Why This Setup'}
                         </p>
                         <div className="space-y-1.5">
                             {card.explanation.map((line, i) => (
-                                <p key={i} className={`text-[11px] leading-relaxed ${isNoSetup ? 'text-zinc-500' : 'text-zinc-300'
-                                    }`}>
+                                <p key={i} className={`text-[11px] leading-relaxed ${isNoSetup ? 'text-zinc-500' : 'text-zinc-300'}`}>
                                     {line}
                                 </p>
                             ))}
@@ -527,7 +554,6 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
                     </div>
                 )}
 
-                {/* NO_SETUP footer message */}
                 {isNoSetup && (
                     <div className="mt-3 text-center">
                         <p className="text-[10px] text-zinc-600 italic">
@@ -540,8 +566,11 @@ function SignalCardDisplay({ card }: { card: NonNullable<AnalysisData['signalCar
     );
 }
 
-// Internal Component: Section
-function Section({ title, icon, children }: { title: string, icon: React.ReactNode, children: React.ReactNode }) {
+// ═══════════════════════════════════════════════════════════════
+// INTERNAL UI COMPONENTS
+// ═══════════════════════════════════════════════════════════════
+
+function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
     return (
         <div className="border border-border bg-zinc-950/50 rounded-xl overflow-hidden flex flex-col h-full">
             <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-zinc-900/30">
@@ -558,8 +587,7 @@ function Section({ title, icon, children }: { title: string, icon: React.ReactNo
     );
 }
 
-// Internal Component: DataRow
-function IntegrityRow({ label, value }: { label: string, value: number }) {
+function IntegrityRow({ label, value }: { label: string; value: number }) {
     return (
         <div className="space-y-1">
             <div className="flex justify-between text-[10px] font-bold">
@@ -573,13 +601,12 @@ function IntegrityRow({ label, value }: { label: string, value: number }) {
     );
 }
 
-function DataRow({ label, value, meta, statusIndicator }: any) {
+function DataRow({ label, value, meta, statusIndicator }: { label: string; value: string; meta?: string; statusIndicator?: boolean }) {
     return (
         <div className="flex justify-between items-center py-2 border-b border-zinc-800/50 last:border-0 border-dashed">
             <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{label}</span>
             <div className="text-right">
-                <span className={`text-sm font-bold block ${statusIndicator ? (value === 'bullish' ? 'text-emerald-500' : 'text-rose-500') : 'text-foreground'
-                    } capitalize`}>
+                <span className={`text-sm font-bold block ${statusIndicator ? (value === 'bullish' ? 'text-emerald-500' : 'text-rose-500') : 'text-foreground'} capitalize`}>
                     {value}
                 </span>
                 {meta && <span className="text-[9px] text-muted-foreground font-semibold uppercase">{meta}</span>}
@@ -588,7 +615,7 @@ function DataRow({ label, value, meta, statusIndicator }: any) {
     );
 }
 
-function TemporalRow({ label, patterns }: any) {
+function TemporalRow({ label, patterns }: { label: string; patterns: string[] }) {
     return (
         <div className="py-2.5 border-b border-zinc-800/50 last:border-0">
             <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest mb-1">{label}</p>
@@ -599,16 +626,17 @@ function TemporalRow({ label, patterns }: any) {
     );
 }
 
-function ScenarioPanel({ title, scenario, type, active }: any) {
+function ScenarioPanel({ title, scenario, type, active }: { title: string; scenario: any; type: 'bullish' | 'bearish'; active: boolean }) {
     if (!scenario) return null;
     const isBullish = type === 'bullish';
     const accent = isBullish ? 'emerald' : 'rose';
 
     return (
-        <div className={`border-2 rounded-xl p-4 md:p-6 transition-all h-full flex flex-col ${active
-            ? `border-${accent}-500/30 bg-${accent}-500/[0.03]`
-            : 'border-zinc-800 bg-zinc-950/20'
-            }`}>
+        <div className={`border-2 rounded-xl p-4 md:p-6 transition-all h-full flex flex-col ${
+            active
+                ? `border-${accent}-500/30 bg-${accent}-500/[0.03]`
+                : 'border-zinc-800 bg-zinc-950/20'
+        }`}>
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? `bg-${accent}-500 text-white` : 'bg-zinc-800 text-zinc-400'}`}>
@@ -652,7 +680,7 @@ function ScenarioPanel({ title, scenario, type, active }: any) {
     );
 }
 
-function MetricBox({ label, value, highlight, color }: { label: string, value: string, highlight?: boolean, color?: string }) {
+function MetricBox({ label, value, highlight, color }: { label: string; value: string; highlight?: boolean; color?: string }) {
     return (
         <div className={`p-4 rounded border ${highlight ? 'bg-primary-500/5 border-primary-500/20' : 'bg-zinc-900 border-border'}`}>
             <p className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mb-1.5">{label}</p>

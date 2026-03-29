@@ -81,7 +81,7 @@ export const fetchQuote = async (symbol: string): Promise<StockQuote> => {
             changePercent: prevClose !== 0 ? Number(((change / prevClose) * 100).toFixed(2)) : 0,
         };
     } catch (error) {
-        logger.warn(`⚠️ Yahoo Quote Fetch Failed for ${symbol}:`, (error as Error).message);
+        logger.warn({ err: error }, `Yahoo Quote Fetch Failed for ${symbol}`);
         // Fallback to mock data for resilience
         return {
             symbol: symbol.toUpperCase(),

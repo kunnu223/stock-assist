@@ -1,41 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useMutation } from '@tanstack/react-query';
+/**
+ * Analyze Page — Single stock analysis with search input.
+ * Uses useAnalysis hook for data fetching and AnalysisDetail for display.
+ * @module @stock-assist/web/app/analyze/page
+ */
+
+import { useState, useEffect } from 'react';
 import { Search, Activity, Terminal, Shield } from 'lucide-react';
 import { AnalysisDetail } from '@/components/analysis/AnalysisDetail';
 import { useLanguage } from '@/context/LanguageContext';
-
-interface AnalysisResponse {
-    success: boolean;
-    analysis: Record<string, unknown>;
-    error?: string;
-}
-
-async function runAnalysis({ symbol, language }: { symbol: string; language: string }): Promise<AnalysisResponse> {
-    const res = await fetch('/api/analyze/single', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, language }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Analysis failed');
-    return data;
-}
+import { useAnalysis } from '@/hooks/useAnalysis';
 
 export default function AnalyzePage() {
     const [symbol, setSymbol] = useState('');
     const { t, language } = useLanguage();
-    const resultsRef = useRef<HTMLDivElement>(null);
-
-    const analysisMutation = useMutation({
-        mutationFn: runAnalysis,
-        onSuccess: () => {
-            setTimeout(() => {
-                resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 100);
-        },
-    });
+    const { analyze, data, isLoading, error, resultsRef } = useAnalysis();
 
     // Auto-scan on mount if query params present
     useEffect(() => {
@@ -46,19 +26,15 @@ export default function AnalyzePage() {
         if (querySymbol) {
             setSymbol(querySymbol);
             if (auto === 'true') {
-                analysisMutation.mutate({ symbol: querySymbol, language });
+                analyze(querySymbol, language);
             }
         }
     }, [language]);
 
     const handleAnalyze = () => {
         if (!symbol) return;
-        analysisMutation.mutate({ symbol, language });
+        analyze(symbol, language);
     };
-
-    const analysis = analysisMutation.data?.analysis || null;
-    const isScanning = analysisMutation.isPending;
-    const error = analysisMutation.error?.message || null;
 
     return (
         <div className="space-y-6 md:space-y-12 max-w-7xl mx-auto pb-24 pt-1 md:pt-10">
@@ -82,7 +58,7 @@ export default function AnalyzePage() {
                 </div>
             </div>
 
-            {/* Scanning Logic */}
+            {/* Search + Scan */}
             <div className="max-w-full">
                 <div className="flex flex-col md:flex-row gap-4 relative z-10 w-full mb-8">
                     <div className="relative group flex-1">
@@ -94,15 +70,15 @@ export default function AnalyzePage() {
                             value={symbol}
                             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                             onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-                            disabled={isScanning}
+                            disabled={isLoading}
                         />
                     </div>
                     <button
                         onClick={handleAnalyze}
-                        disabled={isScanning || !symbol}
+                        disabled={isLoading || !symbol}
                         className="bg-primary-600 hover:bg-primary-500 text-white px-8 py-4 rounded-xl font-bold tracking-wide transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary-600/20 active:scale-95 flex items-center justify-center gap-2 min-w-[140px]"
                     >
-                        {isScanning ? (
+                        {isLoading ? (
                             <>
                                 <Activity className="animate-spin" size={20} />
                                 <span>SCANNING...</span>
@@ -116,10 +92,10 @@ export default function AnalyzePage() {
                     </button>
                 </div>
 
-                {/* Results Section */}
-                {analysis && (
+                {/* Results */}
+                {data && (
                     <div ref={resultsRef} className="scroll-mt-24 animate-in fade-in slide-in-from-bottom-6 duration-1000">
-                        <AnalysisDetail data={analysis} />
+                        <AnalysisDetail data={data} />
                     </div>
                 )}
 
@@ -129,7 +105,7 @@ export default function AnalyzePage() {
                     </div>
                 )}
 
-                {!analysis && !isScanning && !error && (
+                {!data && !isLoading && !error && (
                     <div className="py-20 md:py-40 flex flex-col items-center justify-center text-center space-y-6 md:space-y-8 animate-in fade-in zoom-in-95 duration-700">
                         <div className="w-16 h-16 md:w-24 md:h-24 bg-zinc-900 border border-border rounded-2xl flex items-center justify-center rotate-3 hover:rotate-0 transition-transform duration-500 shadow-premium">
                             <Activity className="text-zinc-600" size={32} />

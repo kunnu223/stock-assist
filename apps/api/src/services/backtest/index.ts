@@ -65,7 +65,7 @@ export const savePrediction = async (analysis: any): Promise<IPrediction | null>
 
         return await prediction.save();
     } catch (error) {
-        logger.error('Error saving prediction:', error);
+        logger.error({ err: error }, 'Error saving prediction');
         return null;
     }
 };
@@ -143,7 +143,7 @@ export const checkPredictions = async (): Promise<{ updated: number, total: numb
                 updatedCount++;
             }
         } catch (err) {
-            logger.error(`Failed to check prediction for ${pred.symbol}:`, err);
+            logger.error({ err }, `Failed to check prediction for ${pred.symbol}`);
         }
     }
 

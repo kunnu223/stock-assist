@@ -219,7 +219,7 @@ export async function getConfidenceCalibration(): Promise<ConfidenceCalibrationR
             recommendations,
         };
     } catch (error) {
-        logger.error('[Calibration] Error building calibration table:', error);
+        logger.error({ err: error }, '[Calibration] Error building calibration table');
         return {
             ready: false,
             totalResolved: 0,
@@ -286,7 +286,7 @@ export async function calibrateConfidence(rawConfidence: number): Promise<Calibr
             wasCalibratable: true,
         };
     } catch (error) {
-        logger.error('[Calibration] Error calibrating confidence:', error);
+        logger.error({ err: error }, '[Calibration] Error calibrating confidence');
         return {
             original: rawConfidence,
             calibrated: rawConfidence,

@@ -113,7 +113,7 @@ export async function compareSector(symbol: string, stockChangePercent: number):
                 const sectorQuote = await fetchQuote(sectorSymbol);
                 sectorChange = sectorQuote.changePercent;
             } catch (err) {
-                logger.warn(`[SectorComparison] Failed to fetch ${sectorSymbol}:`, err);
+                logger.warn({ err }, `[SectorComparison] Failed to fetch ${sectorSymbol}`);
             }
         }
 
@@ -122,11 +122,11 @@ export async function compareSector(symbol: string, stockChangePercent: number):
             const niftyQuote = await fetchQuote('NIFTY50');
             niftyChange = niftyQuote.changePercent;
         } catch (err) {
-            logger.warn('[SectorComparison] Failed to fetch NIFTY50:', err);
+            logger.warn({ err }, '[SectorComparison] Failed to fetch NIFTY50');
         }
 
     } catch (error) {
-        logger.error('[SectorComparison] Error:', error);
+        logger.error({ err: error }, '[SectorComparison] Error');
     }
 
     const outperformance = sectorChange !== null
