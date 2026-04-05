@@ -9,6 +9,7 @@
 import { SignalRecord, SignalStatus, type ISignalRecord, type AdxRegime, type MarketRegime } from '../../models/SignalRecord';
 import type { OHLCData } from '@stock-assist/shared';
 import crypto from 'crypto';
+import { alertSignalResolved } from '../notifications/telegram';
 import { logger } from '../../config/logger';
 
 // ═══════════════════════════════════════════════════════════════
@@ -123,6 +124,35 @@ export interface SignalContext {
     entryPrice: number;
     targetPrice: number;
     stopLoss: number;
+
+    // Attribution (Phase 3)
+    attribution?: {
+        technicalScore: number;
+        patternScore: number;
+        volumeScore: number;
+        newsScore: number;
+        fundamentalScore: number;
+        macdValue: number;
+        macdHistogram: number;
+        macdTrend: string;
+        maTrend: string;
+        ema9: number;
+        ema21: number;
+        bollingerPercentB: number;
+        hasOB: boolean;
+        hasFVG: boolean;
+        hasCHoCH: boolean;
+        hasLiquiditySweep: boolean;
+        smcConfluenceCount: number;
+        entryTrigger: string;
+        macdMomentum: string;
+        volumeTrend: string;
+        rsiDivergence: string;
+    };
+
+    // Phase 6: Signal Grade
+    grade?: 'A+' | 'A' | 'B' | 'C' | 'F';
+    gradeReason?: string;
 }
 
 export interface ConditionFilter {
@@ -154,7 +184,7 @@ export interface WinRateResult {
  * Save a signal with full context. Fire-and-forget from analyze.ts.
  * Phase A: Now computes and stores condition hash for empirical probability.
  */
-export async function saveSignal(context: SignalContext): Promise<void> {
+export async function saveSignal(context: SignalContext): Promise<string | null> {
     try {
         // Prevent duplicate signals for same symbol on same day
         const today = new Date();
@@ -188,13 +218,15 @@ export async function saveSignal(context: SignalContext): Promise<void> {
             Object.assign(existing, signalData);
             await existing.save();
             logger.info(`[SignalTracker] Updated signal for ${context.symbol} (hash: ${hash})`);
-            return;
+            return existing._id.toString();
         }
 
-        await SignalRecord.create(signalData);
+        const created = await SignalRecord.create(signalData);
         logger.info(`[SignalTracker] Saved signal for ${context.symbol} (hash: ${hash}, regime: ${context.regime}, align: ${alignmentBucket}, adx: ${adxBucket}, vol: ${volumeBucket})`);
+        return created._id.toString();
     } catch (error) {
         logger.error({ err: error }, `[SignalTracker] Failed to save signal for ${context.symbol}`);
+        return null;
     }
 }
 
@@ -202,27 +234,95 @@ export async function saveSignal(context: SignalContext): Promise<void> {
 // LAZY OUTCOME CHECK
 // ═══════════════════════════════════════════════════════════════
 
+/** Hard expiry for signals (research shows 5-10 day edge) */
+const SIGNAL_EXPIRY_DAYS = 7;
+
+/** Partial profit at 1.5R (50% of position) */
+const PARTIAL_PROFIT_R = 1.5;
+
+/** Full target at 2.5R (remaining 50%) */
+const FULL_TARGET_R = 2.5;
+
+/**
+ * Calculate RSI for a price slice (lightweight — no full indicator pipeline).
+ * Used for RSI exhaustion guardrail during outcome checking.
+ */
+function quickRSI(prices: number[], period: number = 10): number {
+    if (prices.length < period + 1) return 50;
+    const changes: number[] = [];
+    for (let i = prices.length - period; i < prices.length; i++) {
+        changes.push(prices[i] - prices[i - 1]);
+    }
+    let gains = 0, losses = 0;
+    for (const c of changes) {
+        if (c > 0) gains += c;
+        else losses += Math.abs(c);
+    }
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - 100 / (1 + rs);
+}
+
+/**
+ * Get lowest low of last N bars (for trailing stop on longs).
+ */
+function lowestLow(bars: OHLCData[], count: number): number {
+    const recent = bars.slice(-count);
+    return Math.min(...recent.map(b => b.low));
+}
+
+/**
+ * Get highest high of last N bars (for trailing stop on shorts).
+ */
+function highestHigh(bars: OHLCData[], count: number): number {
+    const recent = bars.slice(-count);
+    return Math.max(...recent.map(b => b.high));
+}
+
 /**
  * Check pending signals against recent historical data.
- * Called when a stock is re-analyzed (lazy backtest approach).
+ * Phase 2: Partial profit exit system.
+ *
+ * Exit logic:
+ *   1. 50% exit at 1.5R → status = PARTIAL_PROFIT, trail remaining 50%
+ *   2. Trail method: stop = max(current_stop, lowest_low_last_2_bars) for longs
+ *   3. Full exit at 2.5R or day 7 (whichever first)
+ *   4. RSI exhaustion: if RSI > 80 within 2-3 days → tighten to breakeven,
+ *      if RSI then closes below 65 → exit remaining
+ *   5. Hard expiry: 7 days
  */
 export async function updateSignalOutcomes(symbol: string, history: OHLCData[]): Promise<number> {
     try {
         const pending = await SignalRecord.find({
             symbol,
-            status: SignalStatus.PENDING
+            status: { $in: [SignalStatus.PENDING, SignalStatus.PARTIAL_PROFIT] }
         });
 
         if (pending.length === 0) return 0;
 
         let updated = 0;
         for (const signal of pending) {
-            // Expire signals older than 10 days
             const daysSince = (Date.now() - signal.date.getTime()) / (1000 * 60 * 60 * 24);
-            if (daysSince > 10) {
+
+            // Hard expiry: 7 days
+            if (daysSince > SIGNAL_EXPIRY_DAYS) {
+                const isPartial = signal.status === SignalStatus.PARTIAL_PROFIT;
                 signal.status = SignalStatus.EXPIRED;
+                signal.exitReason = 'time_expiry';
                 signal.daysToOutcome = Math.round(daysSince);
-                signal.pnlPercent = 0;
+                if (isPartial && signal.partialExitPnl !== undefined) {
+                    // Blended PnL: 50% partial profit + 50% at current price (≈ last close)
+                    const lastClose = history.length > 0 ? history[history.length - 1].close : signal.entryPrice;
+                    const remainderPnl = signal.direction === 'BUY'
+                        ? ((lastClose - signal.entryPrice) / signal.entryPrice) * 100
+                        : ((signal.entryPrice - lastClose) / signal.entryPrice) * 100;
+                    signal.pnlPercent = (signal.partialExitPnl * 0.5) + (remainderPnl * 0.5);
+                    signal.outcomePrice = lastClose;
+                } else {
+                    signal.pnlPercent = 0;
+                }
                 await signal.save();
                 updated++;
                 continue;
@@ -232,60 +332,200 @@ export async function updateSignalOutcomes(symbol: string, history: OHLCData[]):
             const relevantBars = history.filter(bar => new Date(bar.date) > signal.date);
             if (relevantBars.length === 0) continue;
 
-            let currentStopLoss = signal.stopLoss;
             const initialRisk = Math.abs(signal.entryPrice - signal.stopLoss);
-            const moveStopToBreakevenAt = signal.direction === 'BUY'
-                ? signal.entryPrice + initialRisk
-                : signal.entryPrice - initialRisk;
+            const partialTarget = signal.direction === 'BUY'
+                ? signal.entryPrice + initialRisk * PARTIAL_PROFIT_R
+                : signal.entryPrice - initialRisk * PARTIAL_PROFIT_R;
+            const fullTarget = signal.direction === 'BUY'
+                ? signal.entryPrice + initialRisk * FULL_TARGET_R
+                : signal.entryPrice - initialRisk * FULL_TARGET_R;
 
-            for (const bar of relevantBars) {
+            let currentStopLoss = signal.trailingStop || signal.stopLoss;
+            let isPartialTaken = signal.status === SignalStatus.PARTIAL_PROFIT;
+            let rsiExhaustionTriggered = false;
+            let resolved = false;
+
+            // Phase 3: Track MFE/MAE (Maximum Favorable/Adverse Excursion)
+            let maxFavorable = 0;  // Best unrealized PnL%
+            let maxAdverse = 0;    // Worst unrealized PnL%
+
+            // Build price array for RSI (use all history up to each bar)
+            const allPrices = history.map(b => b.close);
+            const signalBarIndex = history.findIndex(bar => new Date(bar.date) > signal.date);
+
+            for (let i = 0; i < relevantBars.length; i++) {
+                const bar = relevantBars[i];
                 const barDate = new Date(bar.date);
-                let hit = false;
+                const barIndex = signalBarIndex + i;
+                const daysSinceSignal = (barDate.getTime() - signal.date.getTime()) / (1000 * 60 * 60 * 24);
+
+                // Phase 3: Track MFE/MAE
+                if (signal.direction === 'BUY') {
+                    const bestPnl = ((bar.high - signal.entryPrice) / signal.entryPrice) * 100;
+                    const worstPnl = ((bar.low - signal.entryPrice) / signal.entryPrice) * 100;
+                    maxFavorable = Math.max(maxFavorable, bestPnl);
+                    maxAdverse = Math.min(maxAdverse, worstPnl);
+                } else {
+                    const bestPnl = ((signal.entryPrice - bar.low) / signal.entryPrice) * 100;
+                    const worstPnl = ((signal.entryPrice - bar.high) / signal.entryPrice) * 100;
+                    maxFavorable = Math.max(maxFavorable, bestPnl);
+                    maxAdverse = Math.min(maxAdverse, worstPnl);
+                }
 
                 if (signal.direction === 'BUY') {
-                    // Trailing Stop to Breakeven
-                    if (bar.high >= moveStopToBreakevenAt && currentStopLoss < signal.entryPrice) {
+                    // === PARTIAL PROFIT CHECK (before stop check) ===
+                    if (!isPartialTaken && bar.high >= partialTarget) {
+                        // Take 50% profit at 1.5R
+                        signal.partialExitPrice = Number(partialTarget.toFixed(2));
+                        signal.partialExitPnl = ((partialTarget - signal.entryPrice) / signal.entryPrice) * 100;
+                        signal.partialExitDate = barDate;
+                        signal.status = SignalStatus.PARTIAL_PROFIT;
+                        isPartialTaken = true;
+                        // Move stop to breakeven for remaining 50%
                         currentStopLoss = signal.entryPrice;
                     }
 
-                    if (bar.high >= signal.targetPrice) {
+                    // === FULL TARGET CHECK (2.5R) ===
+                    if (isPartialTaken && bar.high >= fullTarget) {
                         signal.status = SignalStatus.TARGET_HIT;
-                        signal.outcomePrice = signal.targetPrice;
-                        signal.pnlPercent = ((signal.targetPrice - signal.entryPrice) / signal.entryPrice) * 100;
-                        hit = true;
-                    } else if (bar.low <= currentStopLoss) {
+                        signal.exitReason = 'target_full';
+                        signal.outcomePrice = Number(fullTarget.toFixed(2));
+                        const remainderPnl = ((fullTarget - signal.entryPrice) / signal.entryPrice) * 100;
+                        signal.pnlPercent = (signal.partialExitPnl! * 0.5) + (remainderPnl * 0.5);
+                        resolved = true;
+                    }
+                    // === TRAILING STOP (lowest low of last 2 bars) ===
+                    else if (isPartialTaken && i >= 1) {
+                        const trailBars = relevantBars.slice(Math.max(0, i - 1), i + 1);
+                        const trailLevel = lowestLow(trailBars, trailBars.length);
+                        currentStopLoss = Math.max(currentStopLoss, trailLevel);
+                    }
+
+                    // === RSI EXHAUSTION GUARDRAIL ===
+                    if (isPartialTaken && daysSinceSignal <= 3 && barIndex < allPrices.length) {
+                        const rsi = quickRSI(allPrices.slice(0, barIndex + 1));
+                        if (rsi > 80) {
+                            rsiExhaustionTriggered = true;
+                            currentStopLoss = Math.max(currentStopLoss, signal.entryPrice); // Tighten to breakeven
+                        }
+                        if (rsiExhaustionTriggered && rsi < 65) {
+                            // Exit remaining position
+                            signal.status = SignalStatus.TARGET_HIT;
+                            signal.exitReason = 'rsi_exhaustion';
+                            signal.outcomePrice = bar.close;
+                            const remainderPnl = ((bar.close - signal.entryPrice) / signal.entryPrice) * 100;
+                            signal.pnlPercent = (signal.partialExitPnl! * 0.5) + (remainderPnl * 0.5);
+                            resolved = true;
+                        }
+                    }
+
+                    // === STOP LOSS CHECK ===
+                    if (!resolved && bar.low <= currentStopLoss) {
                         signal.status = SignalStatus.STOP_HIT;
-                        signal.outcomePrice = currentStopLoss;
-                        signal.pnlPercent = ((currentStopLoss - signal.entryPrice) / signal.entryPrice) * 100;
-                        hit = true;
+                        signal.outcomePrice = Number(currentStopLoss.toFixed(2));
+                        if (isPartialTaken) {
+                            signal.exitReason = currentStopLoss >= signal.entryPrice ? 'stop_breakeven' : 'stop_trailing';
+                            const remainderPnl = ((currentStopLoss - signal.entryPrice) / signal.entryPrice) * 100;
+                            signal.pnlPercent = (signal.partialExitPnl! * 0.5) + (remainderPnl * 0.5);
+                        } else {
+                            signal.exitReason = 'stop_initial';
+                            signal.pnlPercent = ((currentStopLoss - signal.entryPrice) / signal.entryPrice) * 100;
+                        }
+                        resolved = true;
                     }
                 } else {
-                    // SELL
-                    // Trailing Stop to Breakeven
-                    if (bar.low <= moveStopToBreakevenAt && currentStopLoss > signal.entryPrice) {
-                        currentStopLoss = signal.entryPrice;
+                    // === SELL direction ===
+
+                    // === PARTIAL PROFIT CHECK ===
+                    if (!isPartialTaken && bar.low <= partialTarget) {
+                        signal.partialExitPrice = Number(partialTarget.toFixed(2));
+                        signal.partialExitPnl = ((signal.entryPrice - partialTarget) / signal.entryPrice) * 100;
+                        signal.partialExitDate = barDate;
+                        signal.status = SignalStatus.PARTIAL_PROFIT;
+                        isPartialTaken = true;
+                        currentStopLoss = signal.entryPrice; // Breakeven
                     }
 
-                    if (bar.low <= signal.targetPrice) {
+                    // === FULL TARGET CHECK (2.5R) ===
+                    if (isPartialTaken && bar.low <= fullTarget) {
                         signal.status = SignalStatus.TARGET_HIT;
-                        signal.outcomePrice = signal.targetPrice;
-                        signal.pnlPercent = ((signal.entryPrice - signal.targetPrice) / signal.entryPrice) * 100;
-                        hit = true;
-                    } else if (bar.high >= currentStopLoss) {
+                        signal.exitReason = 'target_full';
+                        signal.outcomePrice = Number(fullTarget.toFixed(2));
+                        const remainderPnl = ((signal.entryPrice - fullTarget) / signal.entryPrice) * 100;
+                        signal.pnlPercent = (signal.partialExitPnl! * 0.5) + (remainderPnl * 0.5);
+                        resolved = true;
+                    }
+                    // === TRAILING STOP (highest high of last 2 bars) ===
+                    else if (isPartialTaken && i >= 1) {
+                        const trailBars = relevantBars.slice(Math.max(0, i - 1), i + 1);
+                        const trailLevel = highestHigh(trailBars, trailBars.length);
+                        currentStopLoss = Math.min(currentStopLoss, trailLevel);
+                    }
+
+                    // === RSI EXHAUSTION GUARDRAIL (inverse for shorts) ===
+                    if (isPartialTaken && daysSinceSignal <= 3 && barIndex < allPrices.length) {
+                        const rsi = quickRSI(allPrices.slice(0, barIndex + 1));
+                        if (rsi < 20) {
+                            rsiExhaustionTriggered = true;
+                            currentStopLoss = Math.min(currentStopLoss, signal.entryPrice);
+                        }
+                        if (rsiExhaustionTriggered && rsi > 35) {
+                            signal.status = SignalStatus.TARGET_HIT;
+                            signal.exitReason = 'rsi_exhaustion';
+                            signal.outcomePrice = bar.close;
+                            const remainderPnl = ((signal.entryPrice - bar.close) / signal.entryPrice) * 100;
+                            signal.pnlPercent = (signal.partialExitPnl! * 0.5) + (remainderPnl * 0.5);
+                            resolved = true;
+                        }
+                    }
+
+                    // === STOP LOSS CHECK ===
+                    if (!resolved && bar.high >= currentStopLoss) {
                         signal.status = SignalStatus.STOP_HIT;
-                        signal.outcomePrice = currentStopLoss;
-                        signal.pnlPercent = ((signal.entryPrice - currentStopLoss) / signal.entryPrice) * 100;
-                        hit = true;
+                        signal.outcomePrice = Number(currentStopLoss.toFixed(2));
+                        if (isPartialTaken) {
+                            signal.exitReason = currentStopLoss <= signal.entryPrice ? 'stop_breakeven' : 'stop_trailing';
+                            const remainderPnl = ((signal.entryPrice - currentStopLoss) / signal.entryPrice) * 100;
+                            signal.pnlPercent = (signal.partialExitPnl! * 0.5) + (remainderPnl * 0.5);
+                        } else {
+                            signal.exitReason = 'stop_initial';
+                            signal.pnlPercent = ((signal.entryPrice - currentStopLoss) / signal.entryPrice) * 100;
+                        }
+                        resolved = true;
                     }
                 }
 
-                if (hit) {
+                if (resolved) {
                     signal.outcomeDate = barDate;
                     signal.daysToOutcome = Math.round((barDate.getTime() - signal.date.getTime()) / (1000 * 60 * 60 * 24));
+                    signal.trailingStop = Number(currentStopLoss.toFixed(2));
+                    signal.mfe = Number(maxFavorable.toFixed(2));
+                    signal.mae = Number(maxAdverse.toFixed(2));
                     await signal.save();
                     updated++;
+
+                    // Phase 4.1: Telegram alert on signal resolution
+                    if (signal.status === SignalStatus.TARGET_HIT || signal.status === SignalStatus.STOP_HIT) {
+                        alertSignalResolved({
+                            symbol,
+                            direction: signal.direction,
+                            status: signal.status,
+                            pnlPercent: signal.pnlPercent || 0,
+                            entryPrice: signal.entryPrice,
+                            outcomePrice: signal.outcomePrice || signal.entryPrice,
+                            daysToOutcome: signal.daysToOutcome || 0,
+                        }).catch(err => logger.error({ err }, 'Telegram resolution alert error'));
+                    }
+
                     break;
                 }
+            }
+
+            // Save trailing stop progress even if not yet resolved (for PARTIAL_PROFIT state)
+            if (!resolved && isPartialTaken) {
+                signal.trailingStop = Number(currentStopLoss.toFixed(2));
+                await signal.save();
+                updated++;
             }
         }
 

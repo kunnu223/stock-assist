@@ -10,11 +10,12 @@ export enum SignalStatus {
     PENDING = 'PENDING',
     TARGET_HIT = 'TARGET_HIT',
     STOP_HIT = 'STOP_HIT',
-    EXPIRED = 'EXPIRED'
+    EXPIRED = 'EXPIRED',
+    PARTIAL_PROFIT = 'PARTIAL_PROFIT',  // 50% exited at 1.5R, remainder trailing
 }
 
 export type AdxRegime = 'strong' | 'weak' | 'choppy';
-export type MarketRegime = 'TRENDING_STRONG' | 'TRENDING_WEAK' | 'RANGE' | 'VOLATILE' | 'EVENT_DRIVEN';
+export type MarketRegime = 'TRENDING_STRONG' | 'TRENDING_WEAK' | 'RANGE' | 'VOLATILE' | 'EVENT_DRIVEN' | 'TRANSITION';
 
 export interface ISignalRecord extends Document {
     // Identity
@@ -40,6 +41,10 @@ export interface ISignalRecord extends Document {
     fundamentalConflict: boolean;
     ftModifier: number;          // Fundamental-technical conflict modifier
     regime: MarketRegime;
+
+    // Signal grade (Phase 6)
+    grade?: 'A+' | 'A' | 'B' | 'C' | 'F';
+    gradeReason?: string;
 
     // Modifiers applied
     modifiers: {
@@ -68,6 +73,45 @@ export interface ISignalRecord extends Document {
     outcomePrice?: number;
     pnlPercent?: number;
     daysToOutcome?: number;
+
+    // Partial profit exit tracking (Phase 2)
+    partialExitPrice?: number;     // Price where 50% was exited (1.5R)
+    partialExitPnl?: number;       // PnL% on the partial exit
+    partialExitDate?: Date;        // When partial was taken
+    trailingStop?: number;         // Current trailing stop for remaining 50%
+    exitReason?: 'target_full' | 'target_partial_trail' | 'stop_initial' | 'stop_trailing' | 'stop_breakeven' | 'rsi_exhaustion' | 'time_expiry';
+
+    // Signal Attribution (Phase 3) — full sub-scores for post-mortem analysis
+    attribution?: {
+        // Sub-scores breakdown (0-100 each)
+        technicalScore: number;
+        patternScore: number;
+        volumeScore: number;
+        newsScore: number;
+        fundamentalScore: number;
+        // Key indicator values at signal time
+        macdValue: number;
+        macdHistogram: number;
+        macdTrend: string;
+        maTrend: string;
+        ema9: number;
+        ema21: number;
+        bollingerPercentB: number;
+        // SMC state
+        hasOB: boolean;
+        hasFVG: boolean;
+        hasCHoCH: boolean;
+        hasLiquiditySweep: boolean;
+        smcConfluenceCount: number;  // How many SMC signals aligned
+        entryTrigger: string;        // What triggered the entry
+        // Phase 2 signals
+        macdMomentum: string;
+        volumeTrend: string;
+        rsiDivergence: string;
+    };
+    // MFE/MAE (filled after resolution)
+    mfe?: number;   // Maximum Favorable Excursion (best unrealized PnL%)
+    mae?: number;   // Maximum Adverse Excursion (worst unrealized PnL%)
 }
 
 const SignalRecordSchema = new Schema<ISignalRecord>({
@@ -90,7 +134,10 @@ const SignalRecordSchema = new Schema<ISignalRecord>({
     rsiValue: { type: Number, required: true },
     fundamentalConflict: { type: Boolean, required: true },
     ftModifier: { type: Number, default: 0 },
-    regime: { type: String, required: true, enum: ['TRENDING_STRONG', 'TRENDING_WEAK', 'RANGE', 'VOLATILE', 'EVENT_DRIVEN'] },
+    regime: { type: String, required: true, enum: ['TRENDING_STRONG', 'TRENDING_WEAK', 'RANGE', 'VOLATILE', 'EVENT_DRIVEN', 'TRANSITION'] },
+
+    grade: { type: String, enum: ['A+', 'A', 'B', 'C', 'F'], index: true },
+    gradeReason: { type: String },
 
     modifiers: {
         volume: { type: Number, default: 0 },
@@ -121,6 +168,40 @@ const SignalRecordSchema = new Schema<ISignalRecord>({
     outcomePrice: { type: Number },
     pnlPercent: { type: Number },
     daysToOutcome: { type: Number },
+
+    // Partial profit exit tracking (Phase 2)
+    partialExitPrice: { type: Number },
+    partialExitPnl: { type: Number },
+    partialExitDate: { type: Date },
+    trailingStop: { type: Number },
+    exitReason: { type: String, enum: ['target_full', 'target_partial_trail', 'stop_initial', 'stop_trailing', 'stop_breakeven', 'rsi_exhaustion', 'time_expiry'] },
+
+    // Signal Attribution (Phase 3)
+    attribution: {
+        technicalScore: { type: Number },
+        patternScore: { type: Number },
+        volumeScore: { type: Number },
+        newsScore: { type: Number },
+        fundamentalScore: { type: Number },
+        macdValue: { type: Number },
+        macdHistogram: { type: Number },
+        macdTrend: { type: String },
+        maTrend: { type: String },
+        ema9: { type: Number },
+        ema21: { type: Number },
+        bollingerPercentB: { type: Number },
+        hasOB: { type: Boolean },
+        hasFVG: { type: Boolean },
+        hasCHoCH: { type: Boolean },
+        hasLiquiditySweep: { type: Boolean },
+        smcConfluenceCount: { type: Number },
+        entryTrigger: { type: String },
+        macdMomentum: { type: String },
+        volumeTrend: { type: String },
+        rsiDivergence: { type: String },
+    },
+    mfe: { type: Number },
+    mae: { type: Number },
 }, {
     timestamps: true
 });

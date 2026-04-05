@@ -23,12 +23,15 @@ import { logger } from '../../config/logger';
 
 export interface RegimeInput {
     adxValue: number;
+    adxPrevValue?: number;     // ADX value from previous bar (for slope detection)
     atrCurrent: number;
-    atrMean: number;         // Average ATR over last 20 bars
-    volumeRatio: number;     // Current volume / avg volume
+    atrMean: number;           // Average ATR over last 20 bars
+    volumeRatio: number;       // Current volume / avg volume
     newsImpact: 'high' | 'medium' | 'low';
     hasBreakingNews: boolean;
-    alignmentScore: number;  // Multi-timeframe alignment (0-100)
+    alignmentScore: number;    // Multi-timeframe alignment (0-100)
+    bollingerBandwidth?: number;    // (upper - lower) / middle
+    bollingerAvgBandwidth?: number; // 120-bar average bandwidth
 }
 
 export interface RegimeResult {
@@ -55,9 +58,10 @@ export interface RegimeWeights {
 const DEFAULT_REGIME_WEIGHTS: Record<MarketRegime, RegimeWeights> = {
     TRENDING_STRONG: { technical: 0.50, pattern: 0.18, volume: 0.15, news: 0.07, fundamental: 0.10 },
     TRENDING_WEAK: { technical: 0.40, pattern: 0.20, volume: 0.15, news: 0.10, fundamental: 0.15 },
-    RANGE: { technical: 0.25, pattern: 0.15, volume: 0.20, news: 0.15, fundamental: 0.25 },
+    RANGE: { technical: 0.20, pattern: 0.25, volume: 0.20, news: 0.10, fundamental: 0.25 },  // RSI/pattern primary in range
     VOLATILE: { technical: 0.30, pattern: 0.10, volume: 0.25, news: 0.20, fundamental: 0.15 },
     EVENT_DRIVEN: { technical: 0.15, pattern: 0.05, volume: 0.15, news: 0.45, fundamental: 0.20 },
+    TRANSITION: { technical: 0.35, pattern: 0.15, volume: 0.25, news: 0.10, fundamental: 0.15 },  // Squeeze breakout: wider stops, smaller positions
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -215,7 +219,23 @@ export function classifyRegime(input: RegimeInput): RegimeResult {
         };
     }
 
-    // Priority 3: Trending vs Range (ADX-based)
+    // Priority 3: Bollinger Squeeze TRANSITION detection
+    // ADX < 20 + ADX rising + Bollinger bandwidth < 50% of average = squeeze breakout incoming
+    const adxSlope = (input.adxPrevValue !== undefined) ? input.adxValue - input.adxPrevValue : 0;
+    const bollingerSqueeze = (input.bollingerBandwidth !== undefined && input.bollingerAvgBandwidth !== undefined)
+        ? input.bollingerBandwidth < input.bollingerAvgBandwidth * 0.5
+        : false;
+
+    if (input.adxValue < 20 && adxSlope > 1.0 && bollingerSqueeze) {
+        return {
+            regime: 'TRANSITION',
+            confidence: 70,
+            description: `Bollinger squeeze (BW ${input.bollingerBandwidth?.toFixed(3)}) + rising ADX (${input.adxValue.toFixed(0)}, slope +${adxSlope.toFixed(1)}) — breakout incoming`,
+            weights: DEFAULT_REGIME_WEIGHTS.TRANSITION,
+        };
+    }
+
+    // Priority 4: Trending vs Range (ADX-based)
     if (input.adxValue >= 25) {
         const confidence = input.alignmentScore >= 65 ? 90 : 70;
         return {
@@ -300,7 +320,7 @@ export async function getRegimeLearningStatus(): Promise<{
         weights: RegimeWeights;
     }[];
 }> {
-    const allRegimes: MarketRegime[] = ['TRENDING_STRONG', 'TRENDING_WEAK', 'RANGE', 'VOLATILE', 'EVENT_DRIVEN'];
+    const allRegimes: MarketRegime[] = ['TRENDING_STRONG', 'TRENDING_WEAK', 'RANGE', 'VOLATILE', 'EVENT_DRIVEN', 'TRANSITION'];
     const regimes = await Promise.all(
         allRegimes.map(async (regime) => {
             const result = await getEmpiricalOrDefaultWeights(regime);

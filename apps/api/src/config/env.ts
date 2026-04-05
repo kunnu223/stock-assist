@@ -17,6 +17,8 @@ export const config = {
     aiProvider: process.env.AI_PROVIDER || 'gemini',
     frontendUrl: process.env.FRONTEND_URL || '',
     adminKey: process.env.ADMIN_KEY || '',
+    telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
     isDev: process.env.NODE_ENV !== 'production',
     isProd: process.env.NODE_ENV === 'production',
 };

@@ -21,19 +21,19 @@ import { calculateEntryZone } from './entryZone';
 // CONVICTION SCORING WEIGHTS
 // ═══════════════════════════════════════════════════════════════
 
-/** Maximum points per component — total = 100 */
+/** Maximum points per component — total = 100 (rebalanced: MTF up, CHoCH down, OB/candle up) */
 const CONVICTION = {
-    MTF_ALIGNMENT: 25,  // Scale alignmentScore (0–100) → (0–25)
-    CHOCH_DAILY: 20,  // CHoCH detected on daily
-    UNMITIGATED_OB: 15,  // Unmitigated Order Block present
+    MTF_ALIGNMENT: 35,  // Scale alignmentScore (0–100) → (0–35) — primary filter
+    CHOCH_DAILY: 10,  // CHoCH detected on daily (reduced — over-rewarded pre-move signals)
+    UNMITIGATED_OB: 20,  // Unmitigated Order Block present (upgraded — proven institutional zones)
     LIQUIDITY_SWEEP: 15,  // Confirmed liquidity sweep
     VOLUME_SPIKE: 10,  // Volume > 1.5x average
-    FVG_TARGET: 10,  // Unfilled FVG as target exists
-    CANDLESTICK: 5,  // Existing candlestick engine alignment
+    FVG_TARGET: 0,  // Removed from scoring — FVG unreliable for conviction (NSE data)
+    CANDLESTICK: 10,  // Candlestick pattern alignment (upgraded — NSE-calibrated weights)
 };
 
-/** Minimum conviction score to generate a signal */
-const MIN_CONVICTION = 55;
+/** Minimum conviction score to generate a signal (raised from 55 for quality gate) */
+const MIN_CONVICTION = 65;
 
 /** Penalty applied in ranging markets (ADX < 20) */
 const RANGING_PENALTY = -15;

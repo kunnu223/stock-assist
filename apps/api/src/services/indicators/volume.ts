@@ -30,32 +30,42 @@ export const analyzeVolume = (data: OHLCData[]): VolumeAnalysis => {
  * Signal Line = EMA9 of MACD Line (NOT an approximation)
  * Histogram = MACD Line - Signal Line
  */
-export const calcMACD = (prices: number[]): MACDResult => {
-    if (prices.length < 26) {
+/** Sector-optimized MACD periods (Inumula 2019, +615% vs standard on NIFTY 50) */
+const SECTOR_MACD_PARAMS: Record<string, [number, number, number]> = {
+    'IT':              [9, 8, 9],
+    'Automobiles':     [9, 10, 8],
+    'Pharmaceuticals': [11, 9, 12],
+    'Financials':      [12, 8, 16],
+    'Metals':          [11, 10, 14],
+    'Energy':          [10, 5, 12],
+    'FMCG':            [10, 7, 8],
+    'default':         [10, 8, 11],
+};
+
+export const calcMACD = (prices: number[], sector?: string): MACDResult => {
+    const [fast, slow, sig] = SECTOR_MACD_PARAMS[sector || ''] || SECTOR_MACD_PARAMS['default'];
+    if (prices.length < slow) {
         return { macd: 0, signal: 0, histogram: 0, trend: 'neutral', divergence: 'none' };
     }
 
-    // Build full EMA12 and EMA26 arrays
-    const ema12Array = calcEMAArray(prices, 12);
-    const ema26Array = calcEMAArray(prices, 26);
+    // Build full EMA arrays with sector-specific periods
+    const ema12Array = calcEMAArray(prices, fast);
+    const ema26Array = calcEMAArray(prices, slow);
 
-    // MACD line = EMA12 - EMA26 (aligned from period-26 onwards)
-    // ema12Array starts at index 12, ema26Array starts at index 26
-    // We need to align them: ema26Array[0] corresponds to price[26]
-    // ema12Array[14] also corresponds to price[26] (12 + 14 = 26)
-    const offset = 26 - 12; // = 14
+    // MACD line = EMA(fast) - EMA(slow) (aligned from period-slow onwards)
+    const offset = slow - fast;
     const macdLine: number[] = [];
     for (let i = 0; i < ema26Array.length; i++) {
         macdLine.push(ema12Array[i + offset] - ema26Array[i]);
     }
 
-    // Signal line = EMA9 of MACD line
-    if (macdLine.length < 9) {
+    // Signal line = EMA(sig) of MACD line
+    if (macdLine.length < sig) {
         const lastMacd = macdLine[macdLine.length - 1] || 0;
         return { macd: Number(lastMacd.toFixed(2)), signal: 0, histogram: Number(lastMacd.toFixed(2)), trend: 'neutral' };
     }
 
-    const signalArray = calcEMAArray(macdLine, 9);
+    const signalArray = calcEMAArray(macdLine, sig);
 
     // Build full histogram array for divergence checking
     const histogramArray: number[] = [];
@@ -143,3 +153,83 @@ export const calcVWAP = (data: OHLCData[], period: number = 5): number => {
     if (cumulativeVolume === 0) return 0;
     return Number((cumulativeTypicalPriceVolume / cumulativeVolume).toFixed(2));
 };
+
+/**
+ * Build full MACD histogram array (for momentum analysis).
+ * Uses sector-specific parameters.
+ */
+export function buildMACDHistogramArray(prices: number[], sector?: string): number[] {
+    const [fast, slow, sig] = SECTOR_MACD_PARAMS[sector || ''] || SECTOR_MACD_PARAMS['default'];
+    if (prices.length < slow + sig) return [];
+
+    const ema12Array = calcEMAArray(prices, fast);
+    const ema26Array = calcEMAArray(prices, slow);
+
+    const offset = slow - fast;
+    const macdLine: number[] = [];
+    for (let i = 0; i < ema26Array.length; i++) {
+        macdLine.push(ema12Array[i + offset] - ema26Array[i]);
+    }
+
+    if (macdLine.length < sig) return [];
+
+    const signalArray = calcEMAArray(macdLine, sig);
+    const histogramArray: number[] = [];
+    const signalOffset = macdLine.length - signalArray.length;
+    for (let i = 0; i < signalArray.length; i++) {
+        histogramArray.push(macdLine[i + signalOffset] - signalArray[i]);
+    }
+
+    return histogramArray;
+}
+
+/**
+ * MACD Histogram Momentum Detection (Phase 2, item 2.3)
+ * Detects early warning of momentum exhaustion by checking histogram slope change.
+ *
+ * Returns:
+ *   'accelerating' — histogram moving further from zero (momentum building)
+ *   'decelerating' — histogram moving toward zero (early exit warning)
+ *   'stable' — no significant change
+ */
+export function macdHistogramMomentum(histValues: number[]): 'accelerating' | 'decelerating' | 'stable' {
+    if (histValues.length < 3) return 'stable';
+    const r = histValues.slice(-3);
+
+    // Positive histogram: decelerating if shrinking toward zero
+    if (r[0] > 0) {
+        if (r[2] < r[1] && r[1] < r[0]) return 'decelerating';
+        if (r[2] > r[1] && r[1] > r[0]) return 'accelerating';
+    }
+    // Negative histogram: decelerating if rising toward zero
+    if (r[0] < 0) {
+        if (r[2] > r[1] && r[1] > r[0]) return 'decelerating';
+        if (r[2] < r[1] && r[1] < r[0]) return 'accelerating';
+    }
+
+    return 'stable';
+}
+
+/**
+ * Volume Trend Detection (Phase 2, item 2.4)
+ * Detects if volume is increasing (institutional accumulation) or decreasing (fading move).
+ *
+ * Returns:
+ *   'increasing' — 2+ of last N bars show >5% volume growth
+ *   'decreasing' — 2+ of last N bars show >5% volume decline
+ *   'flat' — no clear trend
+ */
+export function volumeTrend(volumes: number[], period: number = 5): 'increasing' | 'decreasing' | 'flat' {
+    if (volumes.length < period) return 'flat';
+    const recent = volumes.slice(-period);
+    let rises = 0;
+
+    for (let i = 1; i < recent.length; i++) {
+        if (recent[i] > recent[i - 1] * 1.05) rises++;
+        else if (recent[i] < recent[i - 1] * 0.95) rises--;
+    }
+
+    if (rises >= 2) return 'increasing';
+    if (rises <= -2) return 'decreasing';
+    return 'flat';
+}

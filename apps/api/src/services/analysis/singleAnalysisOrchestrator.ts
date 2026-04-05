@@ -21,9 +21,14 @@ import { getMarketBreadth } from './breadth';
 import { buildUserFriendlyPrompt } from '../ai/enhancedPrompt';
 import { analyzeWithEnsemble } from '../ai/ensembleAI';
 import { calcADX } from '../indicators/adx';
-import { calcATR } from '../indicators';
+import { calcATR, macdHistogramMomentum as macdHistMomentumFn, volumeTrend, buildMACDHistogramArray } from '../indicators';
+import { calcBollingerBands } from '../indicators/bollinger';
+import { detectRSIDivergence } from '../indicators/rsi';
 import { formatAmount } from '../../utils/formatting';
 import { saveSignal, updateSignalOutcomes, getEmpiricalProbability } from '../backtest/signalTracker';
+import { alertHighConfidenceSignal } from '../notifications/telegram';
+import { createPaperTrade } from '../paperTrading';
+import { gradeSignal, shouldAlertTelegram, isBlockedGrade } from './signalGrading';
 import { DailyAnalysis } from '../../models';
 import { logger } from '../../config/logger';
 import { generateFallbackAnalysis, buildDefaultBullishScenario, buildDefaultBearishScenario, formatPatternsWithStars } from './responseBuilder';
@@ -214,16 +219,51 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
     const atrCurrent = calcATR(stock.history);
     const atrMean = atrValues.length > 0 ? atrValues.reduce((a, b) => a + b, 0) / atrValues.length : atrCurrent;
 
+    // ADX slope: compare current ADX to ADX computed from one bar earlier
+    const adxPrev = stock.history.length > 15
+        ? calcADX(stock.history.slice(0, -1)).adx
+        : adxResult.adx;
+
+    // Bollinger bandwidth for squeeze detection
+    const bbBandwidth = technicalAnalysis.bollingerBands.bandwidth;
+    // Average bandwidth over last 120 bars (6-month on daily)
+    const bbHistory = stock.history.slice(-120);
+    let bbAvgBandwidth = bbBandwidth;
+    if (bbHistory.length >= 30) {
+        const bbPrices = bbHistory.map(d => d.close);
+        // Sample bandwidth every 10 bars
+        const widths: number[] = [];
+        for (let j = 20; j <= bbPrices.length; j += 10) {
+            const slice = bbPrices.slice(0, j);
+            const bb = calcBollingerBands(slice);
+            widths.push(bb.bandwidth);
+        }
+        if (widths.length > 0) {
+            bbAvgBandwidth = widths.reduce((a, b) => a + b, 0) / widths.length;
+        }
+    }
+
     const regimeResult = classifyRegime({
         adxValue: adxResult.adx,
+        adxPrevValue: adxPrev,
         atrCurrent,
         atrMean,
         volumeRatio: technicalAnalysis.indicators.daily.volume.ratio,
         newsImpact: enhancedNews.impactLevel,
         hasBreakingNews: enhancedNews.breakingNews?.length > 0,
-        alignmentScore: technicalAnalysis.multiTimeframe.alignmentScore || 50
+        alignmentScore: technicalAnalysis.multiTimeframe.alignmentScore || 50,
+        bollingerBandwidth: bbBandwidth,
+        bollingerAvgBandwidth: bbAvgBandwidth,
     });
     logger.debug({ symbol, regime: regimeResult.regime, confidence: regimeResult.confidence }, 'Regime classified');
+
+    // Phase 2: Compute new momentum/volume/divergence signals
+    const dailyPrices = stock.history.map(d => d.close);
+    const dailyVolumes = stock.history.map(d => d.volume);
+    const histArray = buildMACDHistogramArray(dailyPrices);
+    const macdHistMomentum = macdHistMomentumFn(histArray);
+    const volTrend = volumeTrend(dailyVolumes);
+    const rsiDiv = detectRSIDivergence(dailyPrices);
 
     logger.info({ symbol, elapsed: ((Date.now() - start) / 1000).toFixed(1) }, 'Data fetch complete');
 
@@ -239,6 +279,10 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
         adxValue: adxResult.adx,
         bollingerPercentB: technicalAnalysis.bollingerBands.percentB,
         candlestickComposite: technicalAnalysis.candlestickAnalysis.compositeScore,
+        // Phase 2 signals
+        macdHistogramMomentum: macdHistMomentum,
+        volumeTrend: volTrend,
+        rsiDivergence: rsiDiv,
     });
     logger.debug({ symbol, score: confidenceResult.score, recommendation: confidenceResult.recommendation, direction: confidenceResult.direction.direction }, 'Confidence calculated');
 
@@ -851,6 +895,62 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
 
         const adxRegimeStr = adxResult.adx >= 25 ? 'strong' as const : adxResult.adx >= 15 ? 'weak' as const : 'choppy' as const;
 
+        // Phase 6: Signal Grading
+        const weeklyTf = technicalAnalysis.multiTimeframe.timeframes['1W'];
+        const gradeConditions: import('../backtest/historicalBacktester').BacktestConditions = {
+            regime: regimeResult.regime,
+            isStrongTrend: regimeResult.regime === 'TRENDING_STRONG',
+            isTransition: regimeResult.regime === 'TRANSITION',
+            weeklyAligned: weeklyTf ? (rec === 'BUY' ? weeklyTf.trend === 'bullish' : weeklyTf.trend === 'bearish') : false,
+            allTimeframesAligned: alignmentScore >= 80,
+            alignmentScore,
+            volumeHigh: technicalAnalysis.indicators.daily.volume.ratio >= 1.5,
+            volumeConfirmed: volumeGatePassed,
+            volumeIncreasing: volTrend === 'increasing',
+            volumeRatio: technicalAnalysis.indicators.daily.volume.ratio,
+            rsiValue: technicalAnalysis.indicators.daily.rsi.value,
+            rsiInZone: rec === 'BUY'
+                ? technicalAnalysis.indicators.daily.rsi.value >= 40 && technicalAnalysis.indicators.daily.rsi.value <= 65
+                : technicalAnalysis.indicators.daily.rsi.value >= 35 && technicalAnalysis.indicators.daily.rsi.value <= 60,
+            macdBullish: rec === 'BUY'
+                ? technicalAnalysis.indicators.daily.macd.histogram > 0
+                : technicalAnalysis.indicators.daily.macd.histogram < 0,
+            macdAccelerating: macdHistMomentum === 'accelerating',
+            emaCrossover: rec === 'BUY'
+                ? technicalAnalysis.indicators.daily.ma.ema9 > technicalAnalysis.indicators.daily.ma.ema21
+                : technicalAnalysis.indicators.daily.ma.ema9 < technicalAnalysis.indicators.daily.ma.ema21,
+            maTrend: technicalAnalysis.indicators.daily.ma.trend,
+            macdTrend: technicalAnalysis.indicators.daily.macd.trend,
+            macdMomentum: macdHistMomentum,
+            volumeTrend: volTrend,
+            rsiDivergence: rsiDiv,
+            hasStrongPattern: (technicalAnalysis.patterns.daily.primary?.confidence ?? 0) >= 0.58,
+            primaryPattern: technicalAnalysis.patterns.daily.primary?.name ?? null,
+            patternWeight: technicalAnalysis.patterns.daily.primary?.confidence ?? 0,
+            hasOrderBlock: signalCard ? signalCard.smcSummary.unmitigatedOBCount > 0 : false,
+            hasCHoCH: signalCard ? signalCard.smcSummary.chochDetected : false,
+            hasLiquiditySweep: signalCard ? signalCard.smcSummary.sweepDetected : false,
+            smcConfluenceCount: signalCard ? [
+                signalCard.smcSummary.unmitigatedOBCount > 0,
+                signalCard.smcSummary.chochDetected,
+                signalCard.smcSummary.sweepDetected,
+            ].filter(Boolean).length : 0,
+            noBearishDivergence: rsiDiv !== 'bearish',
+            noFTConflict: !ftConflict.hasConflict,
+            adxValue: adxResult.adx,
+            weeklyTrend: weeklyTf?.trend || 'unknown',
+            bollingerSqueeze: technicalAnalysis.bollingerBands
+                ? (technicalAnalysis.bollingerBands.upper - technicalAnalysis.bollingerBands.lower) / technicalAnalysis.bollingerBands.middle < 0.04
+                : false,
+        };
+
+        const gradeResult = gradeSignal(gradeConditions, adjustedConfidence);
+
+        // F-grade signals: block entirely
+        if (isBlockedGrade(gradeResult.grade)) {
+            logger.info({ symbol, grade: gradeResult.grade, reason: gradeResult.reason }, 'Signal blocked by F-grade');
+        } else {
+        // Save signal + update outcomes in parallel, then fire async side-effects
         Promise.all([
             saveSignal({
                 symbol,
@@ -881,9 +981,70 @@ export async function analyzeSingleStock(symbol: string, language: string = 'en'
                 entryPrice: signalEntry,
                 targetPrice: signalTarget,
                 stopLoss: signalSL,
+                // Phase 3: Signal Attribution
+                attribution: {
+                    technicalScore: confidenceResult.breakdown.technicalAlignment,
+                    patternScore: confidenceResult.breakdown.patternStrength,
+                    volumeScore: confidenceResult.breakdown.volumeConfirmation,
+                    newsScore: confidenceResult.breakdown.newsSentiment,
+                    fundamentalScore: confidenceResult.breakdown.fundamentalStrength,
+                    macdValue: technicalAnalysis.indicators.daily.macd.macd,
+                    macdHistogram: technicalAnalysis.indicators.daily.macd.histogram,
+                    macdTrend: technicalAnalysis.indicators.daily.macd.trend,
+                    maTrend: technicalAnalysis.indicators.daily.ma.trend,
+                    ema9: technicalAnalysis.indicators.daily.ma.ema9,
+                    ema21: technicalAnalysis.indicators.daily.ma.ema21,
+                    bollingerPercentB: technicalAnalysis.bollingerBands.percentB,
+                    hasOB: signalCard ? signalCard.smcSummary.unmitigatedOBCount > 0 : false,
+                    hasFVG: signalCard ? signalCard.smcSummary.unfilledFVGCount > 0 : false,
+                    hasCHoCH: signalCard ? signalCard.smcSummary.chochDetected : false,
+                    hasLiquiditySweep: signalCard ? signalCard.smcSummary.sweepDetected : false,
+                    smcConfluenceCount: signalCard ? [
+                        signalCard.smcSummary.unmitigatedOBCount > 0,
+                        signalCard.smcSummary.unfilledFVGCount > 0,
+                        signalCard.smcSummary.chochDetected,
+                        signalCard.smcSummary.sweepDetected,
+                    ].filter(Boolean).length : 0,
+                    entryTrigger: signalCard?.entryZone?.entryTrigger || 'none',
+                    macdMomentum: macdHistMomentum,
+                    volumeTrend: volTrend,
+                    rsiDivergence: rsiDiv,
+                },
+                // Phase 6: Signal Grade
+                grade: gradeResult.grade,
+                gradeReason: gradeResult.reason,
             }),
             updateSignalOutcomes(symbol, stock.history)
-        ]).catch((err: unknown) => logger.error({ err }, 'SignalTracker error'));
+        ]).then(([signalId]) => {
+            // Phase 4.1: Telegram alert — only for A+ grade signals
+            if (shouldAlertTelegram(gradeResult.grade) && adjustedConfidence >= 70) {
+                alertHighConfidenceSignal({
+                    symbol,
+                    direction: rec,
+                    confidence: adjustedConfidence,
+                    entryPrice: signalEntry,
+                    targetPrice: signalTarget,
+                    stopLoss: signalSL,
+                    regime: regimeResult.regime,
+                    pattern: technicalAnalysis.patterns.daily?.primary?.name || undefined,
+                }).catch((err: unknown) => logger.error({ err }, 'Telegram alert error'));
+            }
+
+            // Phase 4.2: Auto paper trade creation
+            if (signalId) {
+                createPaperTrade({
+                    signalId,
+                    symbol,
+                    direction: rec,
+                    confidence: adjustedConfidence,
+                    entryPrice: signalEntry,
+                    targetPrice: signalTarget,
+                    stopLoss: signalSL,
+                    regime: regimeResult.regime,
+                }).catch((err: unknown) => logger.error({ err }, 'Paper trade creation error'));
+            }
+        }).catch((err: unknown) => logger.error({ err }, 'SignalTracker error'));
+        } // end else (non-F-grade)
     }
 
     return response;

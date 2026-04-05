@@ -27,14 +27,14 @@ import { logger } from '../../config/logger';
 /** Minimum candles required for SMC analysis */
 const MIN_CANDLES = 7;
 
-/** Maximum age (in candles) to consider OBs and FVGs valid */
-const MAX_OB_AGE = 50;
+/** Maximum age (in candles) to consider OBs and FVGs valid (tightened from 50) */
+const MAX_OB_AGE = 20;
 
-/** Minimum impulse strength as a multiple of ATR to qualify an Order Block */
-const OB_IMPULSE_ATR_MULTIPLIER = 1.5;
+/** Minimum impulse strength as a multiple of ATR to qualify an Order Block (tightened from 1.5) */
+const OB_IMPULSE_ATR_MULTIPLIER = 2.0;
 
-/** ATR multiplier for CHoCH confirmation (next candle must close this far beyond) */
-const CHOCH_CONFIRM_ATR_MULTIPLIER = 0.3;
+/** ATR multiplier for CHoCH confirmation — next candle must close this far beyond (tightened from 0.3) */
+const CHOCH_CONFIRM_ATR_MULTIPLIER = 0.7;
 
 /** ATR multiplier for liquidity sweep confirmation */
 const SWEEP_CONFIRM_ATR_MULTIPLIER = 0.5;

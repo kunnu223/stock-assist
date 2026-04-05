@@ -129,7 +129,7 @@ function detectDoji(c: OHLCData, _candles: OHLCData[]): CandlestickPattern | nul
         name: 'Doji',
         type: 'neutral',
         strength: 'weak',
-        confidenceWeight: 0.30,
+        confidenceWeight: 0.00,
         description: 'Indecision candle — market is balanced between buyers and sellers',
         candles: 1,
     };
@@ -157,7 +157,7 @@ function detectHammer(c: OHLCData, candles: OHLCData[]): CandlestickPattern | nu
         name: 'Hammer',
         type: 'bullish',
         strength: downtrendConfirmed ? 'strong' : 'moderate',
-        confidenceWeight: downtrendConfirmed ? 0.75 : 0.60,
+        confidenceWeight: downtrendConfirmed ? 0.57 : 0.45,
         description: 'Hammer — buyers rejected lower prices, potential reversal signal',
         candles: 1,
     };
@@ -257,7 +257,7 @@ function detectBullishMarubozu(c: OHLCData): CandlestickPattern | null {
         name: 'Bullish Marubozu',
         type: 'bullish',
         strength: 'strong',
-        confidenceWeight: 0.80,
+        confidenceWeight: 0.62,
         description: 'Bullish Marubozu — full bullish candle with no shadows, strong buying pressure',
         candles: 1,
     };
@@ -280,7 +280,7 @@ function detectBearishMarubozu(c: OHLCData): CandlestickPattern | null {
         name: 'Bearish Marubozu',
         type: 'bearish',
         strength: 'strong',
-        confidenceWeight: 0.80,
+        confidenceWeight: 0.62,
         description: 'Bearish Marubozu — full bearish candle with no shadows, strong selling pressure',
         candles: 1,
     };
@@ -302,7 +302,7 @@ function detectSpinningTop(c: OHLCData): CandlestickPattern | null {
         name: 'Spinning Top',
         type: 'neutral',
         strength: 'weak',
-        confidenceWeight: 0.25,
+        confidenceWeight: 0.00,
         description: 'Spinning Top — indecision, neither buyers nor sellers in control',
         candles: 1,
     };
@@ -322,7 +322,7 @@ function detectBullishEngulfing(prev: OHLCData, curr: OHLCData): CandlestickPatt
         name: 'Bullish Engulfing',
         type: 'bullish',
         strength: 'strong',
-        confidenceWeight: 0.80,
+        confidenceWeight: 0.58,
         description: 'Bullish Engulfing — buyers fully overwhelmed previous bearish candle',
         candles: 2,
     };
@@ -338,7 +338,7 @@ function detectBearishEngulfing(prev: OHLCData, curr: OHLCData): CandlestickPatt
         name: 'Bearish Engulfing',
         type: 'bearish',
         strength: 'strong',
-        confidenceWeight: 0.80,
+        confidenceWeight: 0.58,
         description: 'Bearish Engulfing — sellers fully overwhelmed previous bullish candle',
         candles: 2,
     };
@@ -396,8 +396,8 @@ function detectBullishHarami(prev: OHLCData, curr: OHLCData): CandlestickPattern
     return {
         name: 'Bullish Harami',
         type: 'bullish',
-        strength: 'weak',
-        confidenceWeight: 0.45,
+        strength: 'moderate',
+        confidenceWeight: 0.60,
         description: 'Bullish Harami — small bullish candle inside prior bearish body, momentum slowing',
         candles: 2,
     };
@@ -417,8 +417,8 @@ function detectBearishHarami(prev: OHLCData, curr: OHLCData): CandlestickPattern
     return {
         name: 'Bearish Harami',
         type: 'bearish',
-        strength: 'weak',
-        confidenceWeight: 0.45,
+        strength: 'moderate',
+        confidenceWeight: 0.60,
         description: 'Bearish Harami — small bearish candle inside prior bullish body, upward momentum fading',
         candles: 2,
     };
@@ -447,7 +447,7 @@ function detectMorningStar(c1: OHLCData, c2: OHLCData, c3: OHLCData): Candlestic
         name: 'Morning Star',
         type: 'bullish',
         strength: 'strong',
-        confidenceWeight: 0.85,
+        confidenceWeight: 0.62,
         description: 'Morning Star — 3-candle bullish reversal: bearish candle, indecision, strong bullish recovery',
         candles: 3,
     };
@@ -472,7 +472,7 @@ function detectEveningStar(c1: OHLCData, c2: OHLCData, c3: OHLCData): Candlestic
         name: 'Evening Star',
         type: 'bearish',
         strength: 'strong',
-        confidenceWeight: 0.85,
+        confidenceWeight: 0.62,
         description: 'Evening Star — 3-candle bearish reversal: bullish candle, indecision, strong bearish breakdown',
         candles: 3,
     };
@@ -501,7 +501,7 @@ function detectThreeWhiteSoldiers(c1: OHLCData, c2: OHLCData, c3: OHLCData): Can
         name: 'Three White Soldiers',
         type: 'bullish',
         strength: 'strong',
-        confidenceWeight: 0.85,
+        confidenceWeight: 0.60,
         description: 'Three White Soldiers — 3 consecutive strong bullish candles, powerful uptrend confirmation',
         candles: 3,
     };
@@ -530,7 +530,7 @@ function detectThreeBlackCrows(c1: OHLCData, c2: OHLCData, c3: OHLCData): Candle
         name: 'Three Black Crows',
         type: 'bearish',
         strength: 'strong',
-        confidenceWeight: 0.85,
+        confidenceWeight: 0.60,
         description: 'Three Black Crows — 3 consecutive strong bearish candles, powerful downtrend confirmation',
         candles: 3,
     };
@@ -553,7 +553,7 @@ function detectThreeInsideUp(c1: OHLCData, c2: OHLCData, c3: OHLCData): Candlest
         name: 'Three Inside Up',
         type: 'bullish',
         strength: 'moderate',
-        confidenceWeight: 0.65,
+        confidenceWeight: 0.61,
         description: 'Three Inside Up — Harami confirmed by third bullish candle, reversal validated',
         candles: 3,
     };
@@ -576,7 +576,7 @@ function detectThreeInsideDown(c1: OHLCData, c2: OHLCData, c3: OHLCData): Candle
         name: 'Three Inside Down',
         type: 'bearish',
         strength: 'moderate',
-        confidenceWeight: 0.65,
+        confidenceWeight: 0.61,
         description: 'Three Inside Down — Harami confirmed by third bearish candle, reversal validated',
         candles: 3,
     };

@@ -93,6 +93,10 @@ interface ScoringInput {
     adxValue?: number;
     bollingerPercentB?: number;
     candlestickComposite?: number;  // -1 to +1 from candlestick analysis
+    // Phase 2: new momentum/volume signals
+    macdHistogramMomentum?: 'accelerating' | 'decelerating' | 'stable';
+    volumeTrend?: 'increasing' | 'decreasing' | 'flat';
+    rsiDivergence?: 'bullish' | 'bearish' | 'none';
 }
 
 // Default weight configuration (fallback when no regime is classified)
@@ -613,13 +617,13 @@ export const calculateSplitConfidence = (input: ScoringInput): SplitConfidenceRe
         breakdown.fundamentalStrength * weights.fundamental
     );
 
-    // ── Signal amplification: when signals strongly agree, boost the score ──
+    // ── Signal amplification: when signals strongly agree, boost the score (reduced to prevent inflation) ──
     if (dominantCount >= 7) {
-        strengthScore = Math.round(strengthScore * 1.25);
+        strengthScore = Math.round(strengthScore * 1.15);
     } else if (dominantCount >= 5) {
-        strengthScore = Math.round(strengthScore * 1.18);
-    } else if (dominantCount >= 4) {
         strengthScore = Math.round(strengthScore * 1.10);
+    } else if (dominantCount >= 4) {
+        strengthScore = Math.round(strengthScore * 1.05);
     }
 
     if (dominantCount <= 1 && directionValue === 'NEUTRAL') {
@@ -638,28 +642,29 @@ export const calculateSplitConfidence = (input: ScoringInput): SplitConfidenceRe
     const dailyWeeklyBearish = input.weeklyIndicators?.ma.trend === 'bearish' &&
         input.indicators.ma.trend === 'bearish';
 
+    // Conviction profile floors (reduced to prevent score inflation)
     if ((allTFBullish || allTFBearish) && input.indicators.volume.ratio >= 1.2) {
-        strengthScore = Math.max(strengthScore, 78);
+        strengthScore = Math.max(strengthScore, 68);
     }
     if ((dailyWeeklyBullish || dailyWeeklyBearish) && !input.monthlyIndicators) {
-        strengthScore = Math.max(strengthScore, 72);
+        strengthScore = Math.max(strengthScore, 62);
     }
     if (input.patterns.atBreakout && input.indicators.volume.ratio >= 1.5) {
-        strengthScore = Math.max(strengthScore, 80);
+        strengthScore = Math.max(strengthScore, 70);
     }
     if (input.indicators.rsi.value <= 35 && input.indicators.macd.trend === 'bullish' &&
         input.indicators.volume.ratio >= 1.0) {
-        strengthScore = Math.max(strengthScore, 75);
+        strengthScore = Math.max(strengthScore, 65);
     }
     if (input.adxValue && input.adxValue >= 30 && (allTFBullish || allTFBearish)) {
-        strengthScore = Math.max(strengthScore, 82);
+        strengthScore = Math.max(strengthScore, 72);
     }
     if (input.patterns.primary?.confidence && input.patterns.primary.confidence >= 70 &&
         (dailyWeeklyBullish || dailyWeeklyBearish)) {
-        strengthScore = Math.max(strengthScore, 70);
+        strengthScore = Math.max(strengthScore, 62);
     }
 
-    strengthScore = sigmoidPush(strengthScore, 1.6);
+    strengthScore = sigmoidPush(strengthScore, 1.2);
 
     if (input.candlestickComposite !== undefined && Math.abs(input.candlestickComposite) > 0.2) {
         const candleBonus = Math.round(input.candlestickComposite * 15);
@@ -669,28 +674,71 @@ export const calculateSplitConfidence = (input: ScoringInput): SplitConfidenceRe
         }
     }
 
+    // ── Phase 2: MACD Histogram Momentum penalty ──
+    if (input.macdHistogramMomentum === 'decelerating') {
+        // Decelerating against trade direction = early exit warning
+        if ((directionValue === 'BULLISH' && input.indicators.macd.histogram > 0) ||
+            (directionValue === 'BEARISH' && input.indicators.macd.histogram < 0)) {
+            strengthScore -= 8;
+            signalDetails.push('⚠️ MACD histogram decelerating — momentum fading');
+        }
+    }
+
+    // ── Phase 2: Volume Trend penalty ──
+    if (input.volumeTrend === 'decreasing') {
+        // Volume decreasing while in a trade direction = fading move
+        if (directionValue !== 'NEUTRAL') {
+            strengthScore -= 10;
+            signalDetails.push('⚠️ Volume trend decreasing — fading move');
+        }
+    } else if (input.volumeTrend === 'increasing' && directionValue !== 'NEUTRAL') {
+        strengthScore += 5;
+        signalDetails.push('✅ Volume trend increasing — accumulation');
+    }
+
+    // ── Phase 2: RSI Divergence ──
+    if (input.rsiDivergence === 'bearish') {
+        strengthScore -= 15;
+        signalDetails.push('🔻 RSI bearish divergence — price higher high but RSI lower high');
+    } else if (input.rsiDivergence === 'bullish') {
+        strengthScore += 12;
+        signalDetails.push('✅ RSI bullish divergence — price lower low but RSI higher low');
+    }
+
     const strengthResult: StrengthResult = {
-        strength: Math.min(95, Math.max(15, strengthScore)),
+        strength: Math.min(95, Math.max(20, strengthScore)),
         breakdown,
         regime: input.regime,
         weightsUsed: weights,
     };
 
     // Combined recommendation
-    const clampedScore = Math.min(95, Math.max(15, strengthScore));
+    const clampedScore = Math.min(95, Math.max(20, strengthScore));
     let recommendation: SplitConfidenceResult['recommendation'];
-    if (clampedScore >= 60 && directionValue === 'BULLISH') {
+    if (clampedScore >= 65 && directionValue === 'BULLISH') {
         recommendation = 'BUY';
-    } else if (clampedScore >= 60 && directionValue === 'BEARISH') {
+    } else if (clampedScore >= 65 && directionValue === 'BEARISH') {
         recommendation = 'SELL';
-    } else if (clampedScore >= 50 && conviction >= 70 && directionValue === 'BULLISH') {
+    } else if (clampedScore >= 55 && conviction >= 75 && directionValue === 'BULLISH') {
         recommendation = 'BUY';
-    } else if (clampedScore >= 50 && conviction >= 70 && directionValue === 'BEARISH') {
+    } else if (clampedScore >= 55 && conviction >= 75 && directionValue === 'BEARISH') {
         recommendation = 'SELL';
     } else if (directionValue === 'NEUTRAL' && clampedScore < 35) {
         recommendation = 'WAIT';
     } else {
         recommendation = 'HOLD';
+    }
+
+    // ── Weekly Trend Hard Filter ──
+    // Block BUY if weekly MA trend is bearish (counter-trend trades fail >60% on NSE)
+    if (recommendation === 'BUY' && input.weeklyIndicators?.ma.trend === 'bearish') {
+        recommendation = 'HOLD';
+        signalDetails.push('⛔ Weekly trend bearish — BUY blocked (hard filter)');
+    }
+    // Block SELL if weekly MA trend is bullish
+    if (recommendation === 'SELL' && input.weeklyIndicators?.ma.trend === 'bullish') {
+        recommendation = 'HOLD';
+        signalDetails.push('⛔ Weekly trend bullish — SELL blocked (hard filter)');
     }
 
     // Collect all factors

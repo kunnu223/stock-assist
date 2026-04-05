@@ -2,8 +2,8 @@
  * Entry Zone Calculator
  * Takes SMC output + ATR → produces exact trade levels with risk management.
  * 
- * Entry priority: Liquidity Sweep > Order Block > FVG
- * Stop Loss: OB edge ± 0.5×ATR buffer
+ * Entry priority: Liquidity Sweep > Order Block (FVG removed — unreliable on NSE)
+ * Stop Loss: OB edge ± 1.2×ATR buffer
  * Targets: Nearest unfilled FVG or swing high/low, 2×ATR extension
  * Hard rule: R:R < 1:2 → isValid = false
  * 
@@ -30,8 +30,8 @@ const MIN_RISK_REWARD = 2.0;
 /** Minimum NET Risk:Reward (after transaction costs) for a valid signal */
 const MIN_NET_RISK_REWARD = 1.5;
 
-/** ATR multiplier for stop loss buffer beyond OB edge */
-const SL_ATR_BUFFER = 0.5;
+/** ATR multiplier for stop loss buffer beyond OB edge (NSE-calibrated: 9,433 trade backtest) */
+const SL_ATR_BUFFER = 1.2;
 
 /** ATR multiplier for Target 2 extension */
 const T2_ATR_EXTENSION = 2.0;
@@ -59,10 +59,9 @@ export function calculateEntryZone(
 ): EntryZone | null {
     if (atr <= 0 || currentPrice <= 0) return null;
 
-    // Try each entry trigger in priority order
+    // Try each entry trigger in priority order (FVG removed — unreliable on NSE)
     const fromSweep = tryLiquiditySweepEntry(smc.liquiditySweeps, direction);
     const fromOB = tryOrderBlockEntry(smc.orderBlocks, currentPrice, direction);
-    const fromFVG = tryFVGEntry(smc.fairValueGaps, currentPrice, atr, direction);
 
     // Pick the highest-priority available entry
     let entryZoneLow: number;
@@ -80,11 +79,6 @@ export function calculateEntryZone(
         entryZoneHigh = fromOB.high;
         entryTrigger = 'OrderBlock';
         slAnchor = direction === 'bullish' ? fromOB.low : fromOB.high;
-    } else if (fromFVG) {
-        entryZoneLow = fromFVG.low;
-        entryZoneHigh = fromFVG.high;
-        entryTrigger = 'FVG';
-        slAnchor = direction === 'bullish' ? fromFVG.low : fromFVG.high;
     } else {
         return null; // No qualifying zone found
     }

@@ -18,6 +18,9 @@ import { backtestRouter } from './routes/backtest';
 import stocksRouter from './routes/stocks';
 import { commodityRouter } from './routes/commodity';
 import { journalRouter } from './routes/journal';
+import { alertsRouter } from './routes/alerts';
+import { paperTradeRouter } from './routes/paperTrade';
+import { riskRouter } from './routes/risk';
 import { requestIdMiddleware } from './middleware/requestId';
 import { generalLimiter } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errors';
@@ -109,6 +112,9 @@ app.use('/api/backtest', backtestRouter);
 app.use('/api/stocks', stocksRouter);
 app.use('/api/analyze/commodity', commodityRouter);
 app.use('/api/journal', journalRouter);
+app.use('/api/alerts', alertsRouter);
+app.use('/api/paper-trade', paperTradeRouter);
+app.use('/api/risk', riskRouter);
 app.use('/metrics', metricsRouter);
 
 
