@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star, Gem, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Search, History, Settings, TrendingUp, BookOpen, Star, Gem, Sun, Moon, FlaskConical } from 'lucide-react';
 import { WatchlistPanel } from '../dashboard/WatchlistPanel';
 import { useWatchlist } from '@/context/WatchlistContext';
 
@@ -38,6 +38,7 @@ export function Navbar() {
                             <NavLink href="/commodity" icon={<Gem size={18} />} label={t('nav.commodity')} />
                             <NavLink href="/history" icon={<History size={18} />} label={t('nav.history')} />
                             <NavLink href="/journal" icon={<BookOpen size={18} />} label={t('nav.journal')} />
+                            <NavLink href="/backtest" icon={<FlaskConical size={18} />} label="Backtest" />
                         </div>
                     </div>
 

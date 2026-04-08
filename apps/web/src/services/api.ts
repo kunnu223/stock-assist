@@ -6,6 +6,7 @@
  */
 
 import { API_ENDPOINTS } from '@/constants';
+import { toast } from 'sonner';
 import type {
     AnalysisResponse,
     TopStocksResponse,
@@ -32,20 +33,40 @@ class ApiError extends Error {
  * Core fetch wrapper with error handling and JSON parsing.
  * All service methods should use this instead of raw fetch().
  */
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-    const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
-        ...options,
-    });
+async function request<T>(url: string, options?: RequestInit & { silent?: boolean }): Promise<T> {
+    let res: Response;
+    try {
+        res = await fetch(url, {
+            headers: { 'Content-Type': 'application/json' },
+            ...options,
+        });
+    } catch (networkErr) {
+        const msg = 'Network error — check your connection';
+        if (!options?.silent) toast.error(msg);
+        throw new ApiError(msg, 0, 'NETWORK_ERROR');
+    }
 
-    const data = await res.json();
+    let data: any;
+    try {
+        data = await res.json();
+    } catch {
+        const msg = `Server returned invalid response (${res.status})`;
+        if (!options?.silent) toast.error(msg);
+        throw new ApiError(msg, res.status, 'PARSE_ERROR');
+    }
 
     if (!res.ok || data.success === false) {
-        throw new ApiError(
-            data.error || data.message || `Request failed (${res.status})`,
-            res.status,
-            data.code,
-        );
+        const msg = data.error || data.message || `Request failed (${res.status})`;
+        if (!options?.silent) {
+            if (res.status === 429) {
+                toast.warning('Rate limited — please wait a moment');
+            } else if (res.status >= 500) {
+                toast.error(`Server error: ${msg}`);
+            } else {
+                toast.error(msg);
+            }
+        }
+        throw new ApiError(msg, res.status, data.code);
     }
 
     return data as T;
@@ -123,4 +144,113 @@ export async function removeFromWatchlist(symbol: string): Promise<{ success: bo
     return request(`${API_ENDPOINTS.WATCHLIST}/${symbol.toUpperCase()}`, {
         method: 'DELETE',
     });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BACKTEST SERVICE
+// ═══════════════════════════════════════════════════════════════
+
+export interface BacktestConfig {
+    startDate?: string;
+    endDate?: string;
+    minConfidence?: number;
+    signalExpiry?: number;
+    partialTargetR?: number;
+    fullTargetR?: number;
+}
+
+export interface BacktestRun {
+    id: string;
+    config: {
+        startDate: string;
+        endDate: string;
+        symbolCount: number;
+        minConfidence: number;
+        partialTargetR: number;
+        fullTargetR: number;
+    };
+    status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+    progress: string;
+    duration?: number;
+    error?: string;
+    createdAt: string;
+}
+
+export interface BacktestReport {
+    totalSignals: number;
+    winRate: number;
+    lossRate: number;
+    profitFactor: number;
+    expectancy: number;
+    avgPnlPercent: number;
+    totalPnlPercent: number;
+    outcomes: { targetHit: number; stopHit: number; partialProfit: number; expired: number };
+    // Flat timing fields
+    avgDaysToOutcome: number;
+    avgDaysWinners: number;
+    avgDaysLosers: number;
+    // Flat MFE/MAE fields
+    avgMFE: number;
+    avgMAE: number;
+    mfeOnLosers: number;
+    maeOnWinners: number;
+    // Flat risk fields
+    maxConsecutiveLosses: number;
+    maxDrawdownPercent: number;
+    sharpeRatio: number;
+    // Record-based breakdowns
+    byRegime: Record<string, { count: number; winRate: number; avgPnl: number; profitFactor: number }>;
+    byConfidenceBucket: Record<string, { count: number; winRate: number; avgPnl: number; profitFactor: number }>;
+    byPattern: Record<string, { count: number; winRate: number; avgPnl: number; profitFactor: number }>;
+    insights: string[];
+}
+
+export interface BacktestResult {
+    success: boolean;
+    status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+    progress?: string;
+    duration?: number;
+    config?: BacktestRun['config'];
+    report?: BacktestReport;
+    topStacks?: Array<{
+        conditions: string[];
+        totalSignals: number;
+        winRate: number;
+        avgPnl: number;
+        profitFactor: number;
+        edge: number;
+    }>;
+    worstStacks?: Array<{
+        conditions: string[];
+        totalSignals: number;
+        winRate: number;
+        avgPnl: number;
+        profitFactor: number;
+        edge: number;
+    }>;
+    signalCount?: number;
+    error?: string;
+}
+
+/** Start a new historical walk-forward backtest */
+export async function startBacktest(config: BacktestConfig = {}): Promise<{ success: boolean; backtestId: string; status: string; message: string }> {
+    return request(API_ENDPOINTS.BACKTEST_HISTORICAL, {
+        method: 'POST',
+        body: JSON.stringify(config),
+    });
+}
+
+/** Poll backtest status and results by ID */
+export async function fetchBacktestResult(id: string): Promise<BacktestResult> {
+    return request(`${API_ENDPOINTS.BACKTEST_HISTORICAL}/${id}`);
+}
+
+/** List all past backtest runs */
+export async function fetchBacktestRuns(): Promise<{ success: boolean; count: number; results: BacktestRun[] }> {
+    return request(API_ENDPOINTS.BACKTEST_HISTORICAL);
+}
+
+/** Get live prediction accuracy stats */
+export async function fetchBacktestStats(): Promise<{ success: boolean; stats: { totalClosed: number; winRate: number; netPnL: number }; calibrationReady: boolean }> {
+    return request(API_ENDPOINTS.BACKTEST_STATS, { silent: true });
 }

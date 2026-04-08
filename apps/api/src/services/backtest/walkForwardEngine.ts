@@ -8,6 +8,7 @@ import type { OHLCData } from '@stock-assist/shared';
 import { fetchHistory } from '../data/yahooHistory';
 import { runAnalysisOnHistoricalData, type BacktestConditions } from './historicalBacktester';
 import { checkOutcome } from './outcomeChecker';
+import { gradeSignal, isBlockedGrade } from '../analysis/signalGrading';
 import { logger } from '../../config/logger';
 
 // ═══════════════════════════════════════════════════════════════
@@ -153,6 +154,13 @@ export async function runWalkForwardBacktest(
                     if (!analysis) continue;
                     if (analysis.recommendation !== 'BUY' && analysis.recommendation !== 'SELL') continue;
                     if (analysis.confidence < config.minConfidence) continue;
+
+                    // Apply the same signal grading filter used in live analysis
+                    // This ensures backtest reflects what users actually see
+                    if (analysis.conditions) {
+                        const grade = gradeSignal(analysis.conditions, analysis.confidence);
+                        if (isBlockedGrade(grade.grade)) continue;
+                    }
 
                     // Get FUTURE bars for outcome checking (NOT available to analysis)
                     const futureData = fullDaily

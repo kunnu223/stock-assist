@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { toast } from 'sonner';
 import { Activity, Zap, Shield, Gem, Flame, Droplets, Cpu, CircleDot, Globe, MapPin, Building2 } from 'lucide-react';
 import { CommodityResult } from '@/components/commodity/CommodityResult';
 
@@ -152,11 +153,15 @@ export default function CommodityPage() {
                     resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }, 100);
             } else {
-                setError(response.error || t('common.error'));
+                const errMsg = response.error || t('common.error');
+                setError(errMsg);
+                toast.error(errMsg);
             }
         } catch (err) {
             console.error('Commodity analysis failed:', err);
-            setError('Unable to connect. Please try again.');
+            const errMsg = 'Unable to connect. Please try again.';
+            setError(errMsg);
+            toast.error(errMsg);
         }
         setLoading(false);
     };

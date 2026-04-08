@@ -83,6 +83,7 @@ export const viewport: Viewport = {
 
 import { LanguageProvider } from '@/context/LanguageContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { Toaster } from 'sonner';
 
 export default function RootLayout({
     children,
@@ -132,6 +133,19 @@ export default function RootLayout({
                                 <SplashScreen />
                                 <InstallPrompt />
                                 <BottomNav />
+                                <Toaster
+                                    position="top-right"
+                                    toastOptions={{
+                                        style: {
+                                            background: '#18181b',
+                                            border: '1px solid #27272a',
+                                            color: '#fafafa',
+                                            fontSize: '13px',
+                                        },
+                                    }}
+                                    richColors
+                                    closeButton
+                                />
                             </WatchlistProvider>
                         </QueryProvider>
                     </LanguageProvider>

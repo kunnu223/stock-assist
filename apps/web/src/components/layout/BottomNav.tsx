@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Search, History, BookOpen, Gem } from 'lucide-react';
+import { LayoutDashboard, Search, History, BookOpen, FlaskConical } from 'lucide-react';
 
 export function BottomNav() {
     const pathname = usePathname();
@@ -19,11 +19,6 @@ export function BottomNav() {
             icon: Search,
         },
         {
-            href: '/commodity',
-            label: 'Commodity',
-            icon: Gem,
-        },
-        {
             href: '/history',
             label: 'History',
             icon: History,
@@ -32,6 +27,11 @@ export function BottomNav() {
             href: '/journal',
             label: 'Journal',
             icon: BookOpen,
+        },
+        {
+            href: '/backtest',
+            label: 'Backtest',
+            icon: FlaskConical,
         },
     ];
 

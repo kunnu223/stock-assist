@@ -19,6 +19,9 @@ export const API_ENDPOINTS = {
     CHART_DATA: `${API_BASE}/stocks/chart`,
     COMMODITY_CHART_DATA: `${API_BASE}/analyze/commodity/chart`,
     WATCHLIST: `${API_BASE}/watchlist`,
+    BACKTEST_HISTORICAL: `${API_BASE}/backtest/historical`,
+    BACKTEST_STATS: `${API_BASE}/backtest/stats`,
+    BACKTEST_CALIBRATION: `${API_BASE}/backtest/calibration`,
 } as const;
 
 // ═══════════════════════════════════════════════════════════════

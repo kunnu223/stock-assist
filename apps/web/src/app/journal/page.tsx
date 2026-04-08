@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { BookOpen, Plus, Trash2, Pin, Calendar, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -43,6 +44,7 @@ export default function JournalPage() {
             }
         } catch (error) {
             console.error('Failed to fetch notes:', error);
+            toast.error('Failed to load journal notes');
         } finally {
             setIsLoading(false);
         }
@@ -68,6 +70,7 @@ export default function JournalPage() {
             }
         } catch (error) {
             console.error('Failed to add note:', error);
+            toast.error('Failed to save note');
         } finally {
             setIsSubmitting(false);
         }
@@ -79,6 +82,7 @@ export default function JournalPage() {
             setNotes(notes.filter(n => n._id !== id));
         } catch (error) {
             console.error('Failed to delete note:', error);
+            toast.error('Failed to delete note');
         }
     };
 

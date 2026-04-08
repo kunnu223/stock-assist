@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { Search, Filter, Download, RefreshCw, TrendingUp, History, Calendar as CalendarIcon } from 'lucide-react';
 import { StockCard } from '@/components/dashboard/StockCard';
 import { Modal } from '@/components/ui/Modal';
@@ -51,6 +52,7 @@ export default function HistoryPage() {
             }
         } catch (error) {
             console.error('Failed to fetch history:', error);
+            toast.error('Failed to load analysis history');
         } finally {
             setLoading(false);
         }
