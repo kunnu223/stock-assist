@@ -218,12 +218,13 @@ function RunHistoryItem({ run, onLoad }: { run: BacktestRun; onLoad: (id: string
 
 export default function BacktestPage() {
     const [config, setConfig] = useState<BacktestConfig>({
-        startDate: '2025-04-01',
-        endDate: '2026-03-31',
-        minConfidence: 65,
+        startDate: '2024-04-01',
+        endDate: '2025-03-31',
+        minConfidence: 50,
         signalExpiry: 7,
         partialTargetR: 1.5,
         fullTargetR: 2.5,
+        strategy: 'momentum',
     });
     const [showConfig, setShowConfig] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
@@ -381,6 +382,32 @@ export default function BacktestPage() {
             {/* ── Config Panel ── */}
             {showConfig && (
                 <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-6 md:p-8 animate-in fade-in slide-in-from-top-4 duration-300">
+                    {/* ── Strategy selector ── */}
+                    <div className="mb-6">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Strategy</label>
+                        <div className="mt-2 inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+                            <button
+                                type="button"
+                                onClick={() => setConfig(c => ({ ...c, strategy: 'momentum' }))}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-md transition-colors ${config.strategy === 'momentum' ? 'bg-emerald-500/20 text-emerald-300' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                                Momentum
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setConfig(c => ({ ...c, strategy: 'legacy' }))}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-md transition-colors ${config.strategy === 'legacy' ? 'bg-blue-500/20 text-blue-300' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                                Legacy (SMC)
+                            </button>
+                        </div>
+                        <p className="mt-2 text-[10px] text-zinc-600 font-medium">
+                            {config.strategy === 'momentum'
+                                ? 'Cross-sectional momentum + 200-SMA + Donchian breakout + volume + ATR stops. Long-only. Confidence slider is ignored.'
+                                : 'Original SMC pipeline (order blocks, CHoCH, liquidity sweeps, confidence scoring).'}
+                        </p>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         <div className="space-y-2">
                             <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Start Date</label>
@@ -416,7 +443,7 @@ export default function BacktestPage() {
                                 Signal Expiry — <span className="text-primary-400">{config.signalExpiry} days</span>
                             </label>
                             <input
-                                type="range" min="3" max="14" step="1"
+                                type="range" min="3" max="30" step="1"
                                 value={config.signalExpiry}
                                 onChange={e => setConfig(c => ({ ...c, signalExpiry: Number(e.target.value) }))}
                                 className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-blue-500"

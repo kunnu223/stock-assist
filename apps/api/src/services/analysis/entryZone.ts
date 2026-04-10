@@ -39,6 +39,9 @@ const T2_ATR_EXTENSION = 2.0;
 /** FVG must be within this many ATRs of current price to be used as entry */
 const FVG_PROXIMITY_ATR = 1.0;
 
+/** OB / Liquidity Sweep zones must be within this many ATRs of current price to be tradeable */
+const ZONE_PROXIMITY_ATR = 2.0;
+
 /** Fallback Target 1 distance if no FVG/swing exists */
 const FALLBACK_T1_ATR = 1.5;
 
@@ -60,8 +63,8 @@ export function calculateEntryZone(
     if (atr <= 0 || currentPrice <= 0) return null;
 
     // Try each entry trigger in priority order (FVG removed — unreliable on NSE)
-    const fromSweep = tryLiquiditySweepEntry(smc.liquiditySweeps, direction);
-    const fromOB = tryOrderBlockEntry(smc.orderBlocks, currentPrice, direction);
+    const fromSweep = tryLiquiditySweepEntry(smc.liquiditySweeps, currentPrice, atr, direction);
+    const fromOB = tryOrderBlockEntry(smc.orderBlocks, currentPrice, atr, direction);
 
     // Pick the highest-priority available entry
     let entryZoneLow: number;
@@ -136,14 +139,24 @@ export function calculateEntryZone(
 /**
  * Priority 1: Liquidity Sweep entry.
  * Entry zone = sweep candle extreme → sweep candle close.
+ * Only uses sweeps whose zone midpoint is within ZONE_PROXIMITY_ATR of current price,
+ * otherwise the trade would never realistically fill.
  */
 function tryLiquiditySweepEntry(
     sweeps: LiquiditySweep[],
+    currentPrice: number,
+    atr: number,
     direction: 'bullish' | 'bearish'
 ): { low: number; high: number } | null {
-    // Use the most recent confirmed sweep in the desired direction
+    const maxDistance = atr * ZONE_PROXIMITY_ATR;
+
+    // Use the most recent confirmed sweep in the desired direction that is near price
     const confirmed = sweeps
-        .filter(s => s.type === direction && s.confirmed)
+        .filter(s => {
+            if (s.type !== direction || !s.confirmed) return false;
+            const zoneMid = (s.sweepExtreme + s.closePrice) / 2;
+            return Math.abs(zoneMid - currentPrice) <= maxDistance;
+        })
         .sort((a, b) => b.index - a.index);
 
     if (confirmed.length === 0) return null;
@@ -159,15 +172,24 @@ function tryLiquiditySweepEntry(
 /**
  * Priority 2: Order Block entry.
  * Uses the most recent unmitigated OB in the desired direction.
+ * Only considers OBs whose zone midpoint is within ZONE_PROXIMITY_ATR of current price —
+ * far-away OBs would never realistically fill the limit order.
  */
 function tryOrderBlockEntry(
     orderBlocks: OrderBlock[],
     currentPrice: number,
+    atr: number,
     direction: 'bullish' | 'bearish'
 ): { low: number; high: number } | null {
-    // Filter for unmitigated OBs in the right direction, sorted by most recent
+    const maxDistance = atr * ZONE_PROXIMITY_ATR;
+
+    // Filter for unmitigated OBs in the right direction AND within proximity, sorted by most recent
     const candidates = orderBlocks
-        .filter(ob => ob.type === direction && ob.status === 'unmitigated')
+        .filter(ob => {
+            if (ob.type !== direction || ob.status !== 'unmitigated') return false;
+            const zoneMid = (ob.zone.low + ob.zone.high) / 2;
+            return Math.abs(zoneMid - currentPrice) <= maxDistance;
+        })
         .sort((a, b) => a.age - b.age); // Most recent first (lowest age)
 
     if (candidates.length === 0) return null;

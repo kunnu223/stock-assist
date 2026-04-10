@@ -32,8 +32,8 @@ const toNSE = (symbol: string): string => {
     // Check exact mapping first
     if (MAPPINGS[s]) return MAPPINGS[s];
 
-    // Futures symbols (GC=F, SI=F, DX-Y.NYB) — pass through unchanged
-    if (s.includes('=') || s.includes('-')) return s;
+    // Futures / index symbols (GC=F, SI=F, DX-Y.NYB, ^NSEI, ^GSPC) — pass through unchanged
+    if (s.includes('=') || s.includes('-') || s.startsWith('^')) return s;
 
     // Remove spaces if it looks like a multi-word symbol (heuristic for Indian stocks)
     if (!s.includes('.') && s.includes(' ')) {
@@ -72,6 +72,8 @@ export const fetchHistory = async (
             case '6mo': period1 = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000); break;
             case '1y': period1 = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); break;
             case '2y': period1 = new Date(now.getTime() - 730 * 24 * 60 * 60 * 1000); break;
+            case '5y': period1 = new Date(now.getTime() - 5 * 365 * 24 * 60 * 60 * 1000); break;
+            case '10y': period1 = new Date(now.getTime() - 10 * 365 * 24 * 60 * 60 * 1000); break;
             default: period1 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Default 1mo
         }
 

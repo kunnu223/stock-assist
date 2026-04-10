@@ -115,12 +115,24 @@ const NEUTRAL_FUNDAMENTALS: FundamentalData = {
  * Skips: AI, news, fundamentals, sector comparison, market breadth, DB saves, Telegram.
  * Uses: indicators, patterns, SMC, regime, confidence scoring, entry zone, signal composer.
  */
+export interface NullReasonCounters {
+    insufficientData: number;
+    holdRecommendation: number;
+    fallbackBadRR: number;
+    invalidPrices: number;
+    badPriceMath: number;
+}
+
 export function runAnalysisOnHistoricalData(
     symbol: string,
     dailyData: OHLCData[],
     weeklyData: OHLCData[],
+    nullReasons?: NullReasonCounters,
 ): BacktestAnalysisResult | null {
-    if (dailyData.length < 100) return null;
+    if (dailyData.length < 100) {
+        if (nullReasons) nullReasons.insufficientData++;
+        return null;
+    }
 
     // Step 1: Full technical analysis (indicators + patterns + SMC)
     const technicalAnalysis = performComprehensiveTechnicalAnalysis({
@@ -274,7 +286,10 @@ export function runAnalysisOnHistoricalData(
     ));
 
     const rec = confidenceResult.recommendation;
-    if (rec !== 'BUY' && rec !== 'SELL') return null;
+    if (rec !== 'BUY' && rec !== 'SELL') {
+        if (nullReasons) nullReasons.holdRecommendation++;
+        return null;
+    }
 
     // Step 13: Entry zone from SMC
     const direction = rec === 'BUY' ? 'bullish' as const : 'bearish' as const;
@@ -285,9 +300,8 @@ export function runAnalysisOnHistoricalData(
         direction
     );
 
-    // Fallback entry/target/SL from S/R levels if no SMC zone
+    // Fallback entry/target/SL if no SMC zone
     const currentPrice = dailyData[dailyData.length - 1].close;
-    const srLevels = technicalAnalysis.indicators.daily.sr;
     let entryPrice: number;
     let targetPrice: number;
     let stopLoss: number;
@@ -299,24 +313,38 @@ export function runAnalysisOnHistoricalData(
         stopLoss = entryZone.stopLoss;
         riskReward = entryZone.riskReward;
     } else {
-        // Fallback: current price as entry, S/R for target/SL
+        // ── ATR FALLBACK ──
+        // SMC zone unavailable (no nearby OB/sweep). Use a clean ATR-based
+        // structure with a fixed 2:1 R:R. This lets us actually measure the
+        // confidence scorer's edge instead of dropping 58% of would-be signals
+        // because S/R math can't produce a valid R:R unless price is glued to
+        // support/resistance.
         entryPrice = currentPrice;
+        const stopDistance = atrCurrent * 1.5;
+        const rewardDistance = atrCurrent * 3.0;
         if (rec === 'BUY') {
-            stopLoss = Number((srLevels.support - atrCurrent * 1.2).toFixed(2));
-            targetPrice = srLevels.resistance;
+            stopLoss = Number((entryPrice - stopDistance).toFixed(2));
+            targetPrice = Number((entryPrice + rewardDistance).toFixed(2));
         } else {
-            stopLoss = Number((srLevels.resistance + atrCurrent * 1.2).toFixed(2));
-            targetPrice = srLevels.support;
+            stopLoss = Number((entryPrice + stopDistance).toFixed(2));
+            targetPrice = Number((entryPrice - rewardDistance).toFixed(2));
         }
-        const risk = Math.abs(entryPrice - stopLoss);
-        const reward = Math.abs(targetPrice - entryPrice);
-        riskReward = risk > 0 ? Number((reward / risk).toFixed(2)) : 0;
+        riskReward = 2.0;
     }
 
     // Validate prices
-    if (entryPrice <= 0 || stopLoss <= 0 || targetPrice <= 0) return null;
-    if (rec === 'BUY' && (stopLoss >= entryPrice || targetPrice <= entryPrice)) return null;
-    if (rec === 'SELL' && (stopLoss <= entryPrice || targetPrice >= entryPrice)) return null;
+    if (entryPrice <= 0 || stopLoss <= 0 || targetPrice <= 0) {
+        if (nullReasons) nullReasons.invalidPrices++;
+        return null;
+    }
+    if (rec === 'BUY' && (stopLoss >= entryPrice || targetPrice <= entryPrice)) {
+        if (nullReasons) nullReasons.badPriceMath++;
+        return null;
+    }
+    if (rec === 'SELL' && (stopLoss <= entryPrice || targetPrice >= entryPrice)) {
+        if (nullReasons) nullReasons.badPriceMath++;
+        return null;
+    }
 
     // Step 14: Build conditions snapshot
     const weeklyTrend = technicalAnalysis.multiTimeframe.timeframes['1W'].trend;

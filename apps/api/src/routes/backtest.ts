@@ -13,6 +13,7 @@ import { SignalRecord, SignalStatus } from '../models/SignalRecord';
 import { BacktestResult, BacktestStatus } from '../models/BacktestResult';
 import { runWalkForwardBacktest, type BacktestConfig } from '../services/backtest/walkForwardEngine';
 import { generateReport, findConditionStacks } from '../services/backtest/backtestReporter';
+import { fetchManyRawFundamentals } from '../services/data/rawFundamentals';
 import { NIFTY_100 } from '@stock-assist/shared';
 import {
     savePrediction,
@@ -897,6 +898,7 @@ backtestRouter.post('/historical', requireDB, async (req: Request, res: Response
             signalExpiry = 7,
             partialTargetR = 1.5,
             fullTargetR = 2.5,
+            strategy = 'legacy',
         } = req.body;
 
         // Default to NIFTY 100 if no symbols provided
@@ -910,6 +912,7 @@ backtestRouter.post('/historical', requireDB, async (req: Request, res: Response
             signalExpiry,
             partialTargetR,
             fullTargetR,
+            strategy,
         };
 
         // Create result doc with RUNNING status
@@ -979,6 +982,61 @@ backtestRouter.post('/historical', requireDB, async (req: Request, res: Response
             status: 'RUNNING',
             message: `Backtest started for ${stockList.length} stocks from ${startDate} to ${endDate}. Poll GET /api/backtest/historical/${backtestId} for results.`,
         });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/backtest/fundamentals-raw/:symbol
+ * Diagnostic — dump the full raw Yahoo quoteSummary for one stock so we can
+ * see exactly which fields are populated and which are missing.
+ */
+backtestRouter.get('/fundamentals-raw/:symbol', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const symbol = req.params.symbol.toUpperCase();
+        const nse = symbol.endsWith('.NS') ? symbol : `${symbol}.NS`;
+        const yahooFinance = (await import('../config/yahoo')).default;
+        const data = await yahooFinance.quoteSummary(nse, {
+            modules: ['financialData', 'defaultKeyStatistics', 'summaryDetail', 'price'],
+        });
+        res.json({ success: true, symbol, data });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/backtest/fundamentals-smoke
+ * Diagnostic — fetch raw fundamentals for the first N NIFTY 100 stocks and
+ * report which fields came back. Used to verify Yahoo data quality before
+ * building the Quality Momentum screener on top.
+ *
+ * Query: ?limit=20  (default 20, max 100)
+ */
+backtestRouter.get('/fundamentals-smoke', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10) || 20, 100);
+        const symbols = NIFTY_100.slice(0, limit);
+        const t0 = Date.now();
+        const rows = await fetchManyRawFundamentals(symbols, 4);
+        const duration = Date.now() - t0;
+
+        const summary = {
+            requested: symbols.length,
+            complete: rows.filter(r => r.isComplete).length,
+            byField: {
+                roe: rows.filter(r => r.roe !== null).length,
+                profitMargin: rows.filter(r => r.profitMargin !== null).length,
+                earningsGrowth: rows.filter(r => r.earningsGrowth !== null).length,
+                debtToEquity: rows.filter(r => r.debtToEquity !== null).length,
+                fiftyTwoWeekHigh: rows.filter(r => r.fiftyTwoWeekHigh !== null).length,
+                marketCap: rows.filter(r => r.marketCap !== null).length,
+            },
+            durationMs: duration,
+        };
+
+        res.json({ success: true, summary, rows });
     } catch (error) {
         next(error);
     }

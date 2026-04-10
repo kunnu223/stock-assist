@@ -157,6 +157,8 @@ export interface BacktestConfig {
     signalExpiry?: number;
     partialTargetR?: number;
     fullTargetR?: number;
+    /** 'legacy' = SMC + confidence scoring, 'momentum' = cross-sectional momentum + Donchian */
+    strategy?: 'legacy' | 'momentum';
 }
 
 export interface BacktestRun {
